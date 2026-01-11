@@ -8,6 +8,7 @@
 /// - SSD-based palm detection with 2016 anchors
 /// - MediaPipe hand landmark model (21 landmarks)
 /// - Rotation-aware cropping for hand alignment
+/// - MediaPipe gesture recognition (optional)
 ///
 /// **Quick Start:**
 /// ```dart
@@ -29,17 +30,36 @@
 /// await detector.dispose();
 /// ```
 ///
+/// **Gesture Recognition:**
+/// ```dart
+/// final detector = HandDetector(enableGestures: true);
+/// await detector.initialize();
+///
+/// final hands = await detector.detect(imageBytes);
+/// for (final hand in hands) {
+///   if (hand.gesture != null) {
+///     print('Gesture: ${hand.gesture!.type}'); // thumbUp, victory, etc.
+///     print('Confidence: ${hand.gesture!.confidence}');
+///   }
+/// }
+/// ```
+///
 /// **Main Classes:**
 /// - [HandDetector]: Main API for hand detection
-/// - [Hand]: Detected hand with bounding box, landmarks, and handedness
+/// - [Hand]: Detected hand with bounding box, landmarks, handedness, and gesture
 /// - [HandLandmark]: Single keypoint with 3D coordinates (x, y, z) and visibility
 /// - [HandLandmarkType]: Enum of 21 hand landmarks (wrist, finger joints, tips)
 /// - [Handedness]: Left or right hand indication
 /// - [BoundingBox]: Axis-aligned rectangle for hand location
+/// - [GestureType]: Recognized gesture (thumbUp, victory, closedFist, etc.)
+/// - [GestureResult]: Gesture type with confidence score
 ///
 /// **Detection Modes:**
 /// - [HandMode.boxes]: Fast detection returning only bounding boxes
 /// - [HandMode.boxesAndLandmarks]: Full pipeline with 21 landmarks per hand
+///
+/// **Supported Gestures (when enableGestures: true):**
+/// - closedFist, openPalm, pointingUp, thumbDown, thumbUp, victory, iLoveYou
 ///
 /// **Model Variant:**
 /// - [HandLandmarkModel.full]: Full model (only variant available)

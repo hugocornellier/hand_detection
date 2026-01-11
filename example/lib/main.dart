@@ -738,6 +738,8 @@ class _CameraScreenState extends State<CameraScreen> {
       maxDetections: _maxHands,
       minLandmarkScore: 0.5,
       performanceConfig: const PerformanceConfig.xnnpack(),
+      enableGestures: true,
+      gestureMinConfidence: 0.5,
     );
   }
 
@@ -1048,6 +1050,9 @@ class CameraHandOverlayPainter extends CustomPainter {
         _drawConnections(canvas, hand, scaleX, scaleY, offsetX, offsetY);
         _drawLandmarks(canvas, hand, scaleX, scaleY, offsetX, offsetY);
       }
+      if (hand.hasGesture) {
+        _drawGesture(canvas, hand, scaleX, scaleY, offsetX, offsetY);
+      }
     }
   }
 
@@ -1132,6 +1137,96 @@ class CameraHandOverlayPainter extends CustomPainter {
     final Rect rect = Rect.fromLTRB(x1, y1, x2, y2);
     canvas.drawRect(rect, fillPaint);
     canvas.drawRect(rect, boxPaint);
+  }
+
+  void _drawGesture(Canvas canvas, Hand hand, double scaleX, double scaleY,
+      double offsetX, double offsetY) {
+    final gesture = hand.gesture;
+    if (gesture == null || gesture.type == GestureType.unknown) return;
+
+    // Only show gestures with confidence > 0.6
+    if (gesture.confidence < 0.6) return;
+
+    final emoji = _gestureToEmoji(gesture.type);
+    if (emoji.isEmpty) return;
+
+    // Position the emoji above the hand bounding box
+    final double x =
+        (hand.boundingBox.left + hand.boundingBox.right) / 2 * scaleX + offsetX;
+    final double y = hand.boundingBox.top * scaleY + offsetY - 20;
+
+    // Draw background circle
+    final Paint bgPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.9)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(x, y), 28, bgPaint);
+
+    // Draw border
+    final Paint borderPaint = Paint()
+      ..color = Colors.blue.withValues(alpha: 0.8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawCircle(Offset(x, y), 28, borderPaint);
+
+    // Draw emoji text
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: emoji,
+        style: const TextStyle(fontSize: 32),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(x - textPainter.width / 2, y - textPainter.height / 2),
+    );
+
+    // Draw confidence label below
+    final confPainter = TextPainter(
+      text: TextSpan(
+        text: '${(gesture.confidence * 100).toInt()}%',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          shadows: [
+            Shadow(
+              offset: const Offset(1, 1),
+              blurRadius: 2,
+              color: Colors.black.withValues(alpha: 0.8),
+            ),
+          ],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    confPainter.layout();
+    confPainter.paint(
+      canvas,
+      Offset(x - confPainter.width / 2, y + 32),
+    );
+  }
+
+  String _gestureToEmoji(GestureType gesture) {
+    switch (gesture) {
+      case GestureType.thumbUp:
+        return '\u{1F44D}'; // 👍
+      case GestureType.thumbDown:
+        return '\u{1F44E}'; // 👎
+      case GestureType.victory:
+        return '\u{270C}'; // ✌️
+      case GestureType.openPalm:
+        return '\u{1F590}'; // 🖐️
+      case GestureType.closedFist:
+        return '\u{270A}'; // ✊
+      case GestureType.pointingUp:
+        return '\u{261D}'; // ☝️
+      case GestureType.iLoveYou:
+        return '\u{1F91F}'; // 🤟
+      case GestureType.unknown:
+        return '';
+    }
   }
 
   @override

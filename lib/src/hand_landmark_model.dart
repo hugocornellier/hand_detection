@@ -355,6 +355,7 @@ class HandLandmarkModelRunner {
       // This matches Python's postprocessing: (raw - half_pad) / resize_scale
       return _parseLandmarks(
         instance.outputLandmarks,
+        instance.outputWorldLandmarks,
         instance.outputScore,
         instance.outputHandedness,
         halfPadW: halfPadW,
@@ -371,6 +372,7 @@ class HandLandmarkModelRunner {
   ///
   /// The model outputs:
   /// - landmarks: [1, 63] - 21 points × 3 (x, y, z) in 224x224 space
+  /// - worldLandmarks: [1, 63] - 21 world-space points × 3 (x, y, z)
   /// - score: [1, 1] - hand confidence (0-1 after sigmoid)
   /// - handedness: [1, 1] - 0=left, 1=right
   ///
@@ -381,6 +383,7 @@ class HandLandmarkModelRunner {
   /// rescaled_xy[:, 1] = (rescaled_xy[:, 1] * input_h - half_pad_size[1]) / resize_scale[1]
   HandLandmarks _parseLandmarks(
     List<List<double>> landmarksData,
+    List<List<double>> worldLandmarksData,
     List<List<double>> scoreData,
     List<List<double>> handednessData, {
     required double halfPadW,
@@ -426,8 +429,26 @@ class HandLandmarkModelRunner {
       ));
     }
 
+    // Parse 21 world landmarks (used for gesture recognition)
+    // World landmarks are in a normalized 3D coordinate system relative to the hand
+    // They don't need transformation - use raw values directly
+    final rawWorld = worldLandmarksData[0];
+    final worldLandmarks = <HandLandmark>[];
+
+    for (int i = 0; i < numHandLandmarks; i++) {
+      final base = i * 3;
+      worldLandmarks.add(HandLandmark(
+        type: HandLandmarkType.values[i],
+        x: rawWorld[base],
+        y: rawWorld[base + 1],
+        z: rawWorld[base + 2],
+        visibility: score,
+      ));
+    }
+
     return HandLandmarks(
       landmarks: landmarks,
+      worldLandmarks: worldLandmarks,
       score: score,
       handedness: handedness,
     );

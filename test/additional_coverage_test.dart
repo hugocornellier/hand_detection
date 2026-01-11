@@ -248,6 +248,7 @@ void main() {
     test('HandLandmarks includes handedness', () {
       final landmarks = HandLandmarks(
         landmarks: const [],
+        worldLandmarks: const [],
         score: 0.9,
         handedness: Handedness.left,
       );

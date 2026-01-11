@@ -95,6 +95,18 @@ class PalmDetection {
   });
 }
 
+/// Axis-aligned bounding box for NMS IoU computation.
+///
+/// Precomputed from PalmDetection to avoid redundant conversions in O(n²) NMS loop.
+class _AABB {
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
+
+  const _AABB(this.left, this.top, this.right, this.bottom);
+}
+
 /// SSD-based palm detector for Stage 1 of the hand detection pipeline.
 ///
 /// Detects palm locations in images using a Single Shot Detector (SSD) architecture
@@ -135,7 +147,7 @@ class PalmDetector {
   List<List<List<double>>>? _outputScores; // [1, 2016, 1]
 
   /// Creates a palm detector with the specified score threshold.
-  PalmDetector({this.scoreThreshold = 0.60});
+  PalmDetector({this.scoreThreshold = 0.45});
 
   /// Calculates scale for anchor generation.
   static double _calculateScale(
@@ -405,12 +417,16 @@ class PalmDetector {
   /// Decodes raw box predictions using anchors.
   ///
   /// Returns decoded boxes as [score, cx, cy, boxSize, kp0X, kp0Y, kp2X, kp2Y].
+  ///
+  /// Optimization: Only decodes the 4 coordinate pairs actually used (indices 0-5, 8-9)
+  /// instead of all 9 pairs (18 values), avoiding intermediate list allocation.
   List<List<double>> _decodeBoxes(
     List<List<double>> rawBoxes,
     List<List<double>> rawScores, {
     double scale = 192.0,
   }) {
     final results = <List<double>>[];
+    final invScale = 1.0 / scale;
 
     for (int i = 0; i < rawBoxes.length; i++) {
       // Apply sigmoid to score
@@ -422,31 +438,32 @@ class PalmDetector {
       final rawBox = rawBoxes[i];
       final anchor = _anchors[i];
 
-      // Decode coordinates relative to anchor
-      // rawBox: [cx, cy, w, h, kp0_x, kp0_y, kp1_x, kp1_y, ..., kp6_x, kp6_y]
+      // Decode only the coordinates we need (avoiding intermediate list)
+      // rawBox layout: [cx, cy, w, h, kp0_x, kp0_y, kp1_x, kp1_y, kp2_x, kp2_y, ...]
       // Each value is offset relative to anchor, scaled by 192
+      final anchorW = anchor[2];
+      final anchorH = anchor[3];
+      final anchorX = anchor[0];
+      final anchorY = anchor[1];
 
-      // Tile anchor[2:4] (width, height) 9 times for 18 values
-      // Then divide by scale and add anchor[0:2] (cx, cy) tiled 9 times
-      final decoded = <double>[];
-      for (int j = 0; j < 18; j += 2) {
-        final x = rawBox[j] * anchor[2] / scale + anchor[0];
-        final y = rawBox[j + 1] * anchor[3] / scale + anchor[1];
-        decoded.add(x);
-        decoded.add(y);
-      }
+      // Center point (rawBox indices 0,1)
+      final cx = rawBox[0] * anchorW * invScale + anchorX;
+      final cy = rawBox[1] * anchorH * invScale + anchorY;
 
-      final cx = decoded[0];
-      final cy = decoded[1];
-      final w = decoded[2] - anchor[0];
-      final h = decoded[3] - anchor[1];
+      // Box size point (rawBox indices 2,3) - used to compute w,h
+      final wPoint = rawBox[2] * anchorW * invScale + anchorX;
+      final hPoint = rawBox[3] * anchorH * invScale + anchorY;
+      final w = wPoint - anchorX;
+      final h = hPoint - anchorY;
       final boxSize = math.max(w, h);
 
-      // Extract keypoint 0 and keypoint 2 (used for rotation)
-      final kp0X = decoded[4];
-      final kp0Y = decoded[5];
-      final kp2X = decoded[8];
-      final kp2Y = decoded[9];
+      // Keypoint 0 (rawBox indices 4,5) - used for rotation calculation
+      final kp0X = rawBox[4] * anchorW * invScale + anchorX;
+      final kp0Y = rawBox[5] * anchorH * invScale + anchorY;
+
+      // Keypoint 2 (rawBox indices 8,9) - used for rotation calculation
+      final kp2X = rawBox[8] * anchorW * invScale + anchorX;
+      final kp2Y = rawBox[9] * anchorH * invScale + anchorY;
 
       results.add([score, cx, cy, boxSize, kp0X, kp0Y, kp2X, kp2Y]);
     }
@@ -515,14 +532,26 @@ class PalmDetector {
     return _nms(palms);
   }
 
-  /// Non-maximum suppression for palm detections.
-  /// Matches Python's 200px Euclidean distance threshold in pixel space.
-  List<PalmDetection> _nms(List<PalmDetection> palms) {
+  /// IoU-based Non-Maximum Suppression for palm detections.
+  ///
+  /// Uses Intersection-over-Union to properly handle overlapping boxes,
+  /// rather than center distance which incorrectly suppresses non-overlapping hands.
+  ///
+  /// Optimization: Precomputes AABBs once (O(n)) before the O(n²) comparison loop
+  /// to avoid redundant coordinate conversions.
+  List<PalmDetection> _nms(List<PalmDetection> palms, {double iouThreshold = 0.45}) {
     if (palms.isEmpty) return palms;
 
     // Sort by score descending
     final sorted = List<PalmDetection>.from(palms)
       ..sort((a, b) => b.score.compareTo(a.score));
+
+    // Precompute AABBs once - O(n) instead of O(n²) conversions
+    final aabbs = List<_AABB>.generate(
+      sorted.length,
+      (i) => _palmToAABB(sorted[i]),
+      growable: false,
+    );
 
     final keep = <PalmDetection>[];
     final suppressed = List<bool>.filled(sorted.length, false);
@@ -534,21 +563,52 @@ class PalmDetector {
       for (int j = i + 1; j < sorted.length; j++) {
         if (suppressed[j]) continue;
 
-        // Convert normalized coordinates to pixel space (matching Python's approach)
-        final dx =
-            (sorted[i].sqnRrCenterX - sorted[j].sqnRrCenterX) * _imageWidth;
-        final dy =
-            (sorted[i].sqnRrCenterY - sorted[j].sqnRrCenterY) * _imageHeight;
-        final distance = math.sqrt(dx * dx + dy * dy);
-
-        // Use 200px threshold like Python (not normalized)
-        if (distance < 200.0) {
+        final iou = _calculateIoUFromAABB(aabbs[i], aabbs[j]);
+        if (iou >= iouThreshold) {
           suppressed[j] = true;
         }
       }
     }
 
     return keep;
+  }
+
+  /// Converts a PalmDetection to an axis-aligned bounding box.
+  _AABB _palmToAABB(PalmDetection p) {
+    final maxDim = math.max(_imageWidth, _imageHeight).toDouble();
+    final halfSize = (p.sqnRrSize * maxDim) / 2;
+    final centerX = p.sqnRrCenterX * _imageWidth;
+    final centerY = p.sqnRrCenterY * _imageHeight;
+    return _AABB(
+      centerX - halfSize,
+      centerY - halfSize,
+      centerX + halfSize,
+      centerY + halfSize,
+    );
+  }
+
+  /// Calculates Intersection over Union for two precomputed AABBs.
+  double _calculateIoUFromAABB(_AABB a, _AABB b) {
+    // Calculate intersection rectangle
+    final interLeft = math.max(a.left, b.left);
+    final interRight = math.min(a.right, b.right);
+    final interTop = math.max(a.top, b.top);
+    final interBottom = math.min(a.bottom, b.bottom);
+
+    // No intersection if boxes don't overlap
+    if (interRight <= interLeft || interBottom <= interTop) {
+      return 0.0;
+    }
+
+    final interArea = (interRight - interLeft) * (interBottom - interTop);
+
+    // Calculate union area
+    final aArea = (a.right - a.left) * (a.bottom - a.top);
+    final bArea = (b.right - b.left) * (b.bottom - b.top);
+    final unionArea = aArea + bArea - interArea;
+
+    if (unionArea <= 0) return 0.0;
+    return interArea / unionArea;
   }
 
   /// Exposes anchor generation for testing.

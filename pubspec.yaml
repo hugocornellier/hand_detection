@@ -34,6 +34,8 @@ flutter:
   assets:
     - assets/models/hand_detection.tflite
     - assets/models/hand_landmark_full.tflite
+    - assets/models/gesture_embedder.tflite
+    - assets/models/canned_gesture_classifier.tflite
     - assets/bin/libtensorflowlite_c-win.dll
     - assets/bin/libtensorflowlite_c-linux.so
     - assets/samples/2-hands.png

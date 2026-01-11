@@ -121,10 +121,88 @@ class PerformanceConfig {
   }
 }
 
+/// Recognized hand gesture types from MediaPipe gesture classifier.
+///
+/// The gesture classifier recognizes 7 distinct gestures plus an "unknown" category
+/// for unrecognized hand poses.
+///
+/// Example:
+/// ```dart
+/// final hands = await detector.detect(imageBytes);
+/// for (final hand in hands) {
+///   if (hand.gesture != null && hand.gesture!.confidence > 0.7) {
+///     switch (hand.gesture!.type) {
+///       case GestureType.thumbUp:
+///         print('Thumbs up detected!');
+///         break;
+///       case GestureType.victory:
+///         print('Peace sign detected!');
+///         break;
+///       default:
+///         break;
+///     }
+///   }
+/// }
+/// ```
+enum GestureType {
+  /// Unrecognized or ambiguous gesture.
+  unknown,
+
+  /// Closed fist gesture. ✊
+  closedFist,
+
+  /// Open palm with fingers extended. 🖐️
+  openPalm,
+
+  /// Index finger pointing upward. ☝️
+  pointingUp,
+
+  /// Thumbs down gesture. 👎
+  thumbDown,
+
+  /// Thumbs up gesture. 👍
+  thumbUp,
+
+  /// Victory/peace sign (index and middle fingers extended). ✌️
+  victory,
+
+  /// "I Love You" sign (thumb, index, and pinky extended). 🤟
+  iLoveYou,
+}
+
+/// Result of gesture recognition containing the detected gesture and confidence.
+///
+/// Returned as part of [Hand] when gesture recognition is enabled.
+class GestureResult {
+  /// The recognized gesture type.
+  final GestureType type;
+
+  /// Confidence score for the gesture recognition (0.0 to 1.0).
+  ///
+  /// Higher values indicate more confident predictions. A threshold of 0.7
+  /// is recommended for filtering uncertain predictions.
+  final double confidence;
+
+  /// Creates a gesture result with the given type and confidence.
+  const GestureResult({
+    required this.type,
+    required this.confidence,
+  });
+
+  @override
+  String toString() =>
+      'GestureResult(type: ${type.name}, confidence: ${confidence.toStringAsFixed(3)})';
+}
+
 /// Collection of hand landmarks with confidence score (internal use).
 class HandLandmarks {
   /// List of 21 landmarks extracted from the hand landmark model.
+  /// Coordinates are in the original image pixel space.
   final List<HandLandmark> landmarks;
+
+  /// List of 21 world-space landmarks for gesture recognition.
+  /// These are in a normalized 3D coordinate system relative to the hand.
+  final List<HandLandmark> worldLandmarks;
 
   /// Confidence score for the landmark extraction (0.0 to 1.0).
   final double score;
@@ -135,6 +213,7 @@ class HandLandmarks {
   /// Creates a collection of hand landmarks with a confidence score and handedness.
   HandLandmarks({
     required this.landmarks,
+    required this.worldLandmarks,
     required this.score,
     required this.handedness,
   });
@@ -379,6 +458,7 @@ const List<List<HandLandmarkType>> handLandmarkConnections = [
 /// - [score]: Confidence score from the hand detector (0.0 to 1.0)
 /// - [landmarks]: List of 21 keypoints (empty if [HandMode.boxes])
 /// - [handedness]: Whether this is a left or right hand (null if not determined)
+/// - [gesture]: Recognized gesture (null if gesture recognition disabled)
 /// - [imageWidth] and [imageHeight]: Original image dimensions for coordinate reference
 ///
 /// Example:
@@ -387,6 +467,9 @@ const List<List<HandLandmarkType>> handLandmarkConnections = [
 /// for (final hand in hands) {
 ///   print('Hand detected with confidence ${hand.score}');
 ///   print('Handedness: ${hand.handedness}');
+///   if (hand.gesture != null) {
+///     print('Gesture: ${hand.gesture!.type} (${hand.gesture!.confidence})');
+///   }
 ///   if (hand.hasLandmarks) {
 ///     final wrist = hand.getLandmark(HandLandmarkType.wrist);
 ///     print('Wrist at (${wrist?.x}, ${wrist?.y})');
@@ -430,6 +513,10 @@ class Hand {
   /// May be null if rotation data is not preserved.
   final double? rotatedSize;
 
+  /// Recognized gesture for this hand.
+  /// Null if gesture recognition is disabled or not available.
+  final GestureResult? gesture;
+
   /// Creates a detected hand with bounding box, landmarks, and image dimensions.
   const Hand({
     required this.boundingBox,
@@ -442,6 +529,7 @@ class Hand {
     this.rotatedCenterX,
     this.rotatedCenterY,
     this.rotatedSize,
+    this.gesture,
   });
 
   /// Gets a specific landmark by type, or null if not found
@@ -456,14 +544,20 @@ class Hand {
   /// Returns true if this hand has landmarks
   bool get hasLandmarks => landmarks.isNotEmpty;
 
+  /// Returns true if this hand has a recognized gesture
+  bool get hasGesture => gesture != null;
+
   @override
   String toString() {
     final String landmarksInfo = landmarks
         .map((l) =>
             '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}')
         .join('\n');
+    final String gestureInfo =
+        gesture != null ? '  gesture=${gesture!.type.name} (${gesture!.confidence.toStringAsFixed(3)}),\n' : '';
     return 'Hand(\n'
         '  score=${score.toStringAsFixed(3)},\n'
+        '$gestureInfo'
         '  landmarks=${landmarks.length},\n'
         '  coords:\n$landmarksInfo\n)';
   }

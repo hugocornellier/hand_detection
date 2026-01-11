@@ -5,6 +5,7 @@ import 'types.dart';
 import 'image_utils.dart';
 import 'palm_detector.dart';
 import 'hand_landmark_model.dart';
+import 'gesture_recognizer.dart';
 
 /// Helper class to store preprocessing data for each detected palm.
 ///
@@ -66,6 +67,7 @@ class _HandCropData {
 class HandDetector {
   late final PalmDetector _palm;
   late final HandLandmarkModelRunner _lm;
+  GestureRecognizer? _gestureRecognizer;
 
   /// Detection mode controlling pipeline behavior.
   final HandMode mode;
@@ -88,6 +90,14 @@ class HandDetector {
   /// Performance configuration for TensorFlow Lite inference.
   final PerformanceConfig performanceConfig;
 
+  /// Whether to run gesture recognition on detected hands.
+  /// When enabled, each detected hand will include a [GestureResult].
+  final bool enableGestures;
+
+  /// Minimum confidence threshold for gesture recognition (0.0 to 1.0).
+  /// Gestures with confidence below this threshold will be reported as [GestureType.unknown].
+  final double gestureMinConfidence;
+
   bool _isInitialized = false;
 
   /// Creates a hand detector with the specified configuration.
@@ -95,24 +105,31 @@ class HandDetector {
   /// Parameters:
   /// - [mode]: Detection mode (boxes only or boxes + landmarks). Default: [HandMode.boxesAndLandmarks]
   /// - [landmarkModel]: Hand landmark model variant. Default: [HandLandmarkModel.full]
-  /// - [detectorConf]: Palm detection confidence threshold (0.0-1.0). Default: 0.6
+  /// - [detectorConf]: Palm detection confidence threshold (0.0-1.0). Default: 0.45
   /// - [maxDetections]: Maximum number of hands to detect. Default: 10
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
   /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1
   /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: no acceleration
+  /// - [enableGestures]: Whether to run gesture recognition. Default: false
+  /// - [gestureMinConfidence]: Minimum confidence for gesture recognition (0.0-1.0). Default: 0.5
   HandDetector({
     this.mode = HandMode.boxesAndLandmarks,
     this.landmarkModel = HandLandmarkModel.full,
-    this.detectorConf = 0.6,
+    this.detectorConf = 0.45,
     this.maxDetections = 10,
     this.minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     this.performanceConfig = PerformanceConfig.disabled,
+    this.enableGestures = false,
+    this.gestureMinConfidence = 0.5,
   }) : interpreterPoolSize = performanceConfig.mode == PerformanceMode.disabled
             ? interpreterPoolSize
             : 1 {
     _palm = PalmDetector(scoreThreshold: detectorConf);
     _lm = HandLandmarkModelRunner(poolSize: this.interpreterPoolSize);
+    if (enableGestures) {
+      _gestureRecognizer = GestureRecognizer(minConfidence: gestureMinConfidence);
+    }
   }
 
   /// Initializes the hand detector by loading TensorFlow Lite models.
@@ -131,6 +148,12 @@ class HandDetector {
 
     await _palm.initialize(performanceConfig: performanceConfig);
     await _lm.initialize(landmarkModel, performanceConfig: performanceConfig);
+
+    // Initialize gesture recognizer if enabled
+    if (_gestureRecognizer != null) {
+      await _gestureRecognizer!.initialize(performanceConfig: performanceConfig);
+    }
+
     _isInitialized = true;
   }
 
@@ -141,6 +164,9 @@ class HandDetector {
   Future<void> dispose() async {
     await _palm.dispose();
     await _lm.dispose();
+    if (_gestureRecognizer != null) {
+      await _gestureRecognizer!.dispose();
+    }
     _isInitialized = false;
   }
 
@@ -199,11 +225,24 @@ class HandDetector {
     }
 
     // Stage 1: Detect palms
+    // NMS returns detections in descending score order (sorted before suppression)
     final List<PalmDetection> palms = await _palm.detectOnMat(image);
 
-    // Limit detections
-    final limitedPalms =
-        palms.length > maxDetections ? palms.sublist(0, maxDetections) : palms;
+    // Debug assertion: verify NMS maintains score-descending order invariant
+    assert(() {
+      for (int i = 1; i < palms.length; i++) {
+        if (palms[i].score > palms[i - 1].score) {
+          throw StateError(
+              'NMS output not sorted by score: ${palms[i - 1].score} < ${palms[i].score}');
+        }
+      }
+      return true;
+    }());
+
+    // Limit detections (NMS guarantees highest-scored first)
+    final limitedPalms = palms.length > maxDetections
+        ? palms.sublist(0, maxDetections)
+        : palms;
 
     if (mode == HandMode.boxes) {
       return _palmsToHands(image, limitedPalms, []);
@@ -246,7 +285,7 @@ class HandDetector {
     final allLandmarks = await Future.wait(futures);
 
     // Phase 3: Post-process results and transform coordinates
-    final results = _buildResults(image, cropDataList, allLandmarks);
+    final results = await _buildResults(image, cropDataList, allLandmarks);
 
     // Clean up crop data (dispose cv.Mat objects)
     for (final data in cropDataList) {
@@ -301,11 +340,14 @@ class HandDetector {
   /// (after unpadding/rescaling to match Python's postprocessing).
   /// This method applies rotation and translation to transform them
   /// to original image coordinates.
-  List<Hand> _buildResults(
+  ///
+  /// If gesture recognition is enabled, also runs gesture classification
+  /// on each detected hand.
+  Future<List<Hand>> _buildResults(
     cv.Mat image,
     List<_HandCropData> cropDataList,
     List<HandLandmarks?> allLandmarks,
-  ) {
+  ) async {
     final results = <Hand>[];
 
     for (int i = 0; i < cropDataList.length; i++) {
@@ -320,6 +362,10 @@ class HandDetector {
       final cropW = data.croppedHand.cols.toDouble();
       final cropH = data.croppedHand.rows.toDouble();
 
+      // Precompute trig values once per hand (used for all 21 landmarks)
+      final cosR = math.cos(data.rotation);
+      final sinR = math.sin(data.rotation);
+
       for (final lm in lms.landmarks) {
         // Landmarks are already in crop pixel space (after unpadding/rescaling)
         // No need to multiply by cropW/cropH - they're already in pixels
@@ -332,7 +378,8 @@ class HandDetector {
           yCrop,
           cropW,
           cropH,
-          data.rotation,
+          cosR,
+          sinR,
           data.centerX,
           data.centerY,
         );
@@ -344,6 +391,18 @@ class HandDetector {
           z: lm.z,
           visibility: lm.visibility,
         ));
+      }
+
+      // Run gesture recognition if enabled
+      GestureResult? gesture;
+      if (_gestureRecognizer != null && _gestureRecognizer!.isInitialized) {
+        gesture = await _gestureRecognizer!.recognize(
+          landmarks: transformedLandmarks,
+          worldLandmarks: lms.worldLandmarks,
+          handedness: lms.handedness,
+          imageWidth: image.cols,
+          imageHeight: image.rows,
+        );
       }
 
       // Calculate bounding box from rotation rectangle
@@ -365,6 +424,7 @@ class HandDetector {
         rotatedCenterX: data.centerX,
         rotatedCenterY: data.centerY,
         rotatedSize: data.cropSize,
+        gesture: gesture,
       ));
     }
 
@@ -378,12 +438,16 @@ class HandDetector {
   ///
   /// The forward transform in rotateAndCropRectangle applies R(+rotation) to the image.
   /// To match Python (hand_landmark.py:357), the inverse applies R(-rotation) to undo it.
+  ///
+  /// Parameters [cosR] and [sinR] are precomputed cos/sin of the rotation angle
+  /// to avoid redundant trig calls when transforming multiple landmarks.
   (double, double) _transformToOriginal(
     double xCrop,
     double yCrop,
     double cropW,
     double cropH,
-    double rotation,
+    double cosR,
+    double sinR,
     double centerX,
     double centerY,
   ) {
@@ -394,8 +458,6 @@ class HandDetector {
     // Apply inverse rotation R(-rotation) to undo the forward R(+rotation)
     // R(-θ) = [cos(-θ), sin(-θ); -sin(-θ), cos(-θ)]
     //       = [cos(θ), -sin(θ); sin(θ), cos(θ)]
-    final cosR = math.cos(rotation);
-    final sinR = math.sin(rotation);
     final xRot = xRel * cosR - yRel * sinR;
     final yRot = xRel * sinR + yRel * cosR;
 
