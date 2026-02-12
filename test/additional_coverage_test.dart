@@ -45,40 +45,6 @@ void main() {
       }
     });
 
-    test('ensureTFLiteLoaded honors env override', () async {
-      HandLandmarkModelRunner.resetNativeLibForTest();
-      await HandLandmarkModelRunner.ensureTFLiteLoaded(
-        env: <String, String>{'HAND_TFLITE_LIB': '/usr/lib/libSystem.B.dylib'},
-        platformOverride: 'macos',
-      );
-      expect(HandLandmarkModelRunner.nativeLibForTest(), isNotNull);
-    });
-
-    test('ensureTFLiteLoaded falls back for other platforms', () async {
-      HandLandmarkModelRunner.resetNativeLibForTest();
-      await HandLandmarkModelRunner.ensureTFLiteLoaded(
-        env: const <String, String>{},
-        platformOverride: 'other',
-      );
-      expect(HandLandmarkModelRunner.nativeLibForTest(), isNotNull);
-    });
-
-    test('ensureTFLiteLoaded builds candidate lists for Windows/Linux',
-        () async {
-      HandLandmarkModelRunner.resetNativeLibForTest();
-      await HandLandmarkModelRunner.ensureTFLiteLoaded(
-        env: const <String, String>{},
-        platformOverride: 'windows',
-      );
-      expect(HandLandmarkModelRunner.nativeLibForTest(), isNull);
-
-      HandLandmarkModelRunner.resetNativeLibForTest();
-      await HandLandmarkModelRunner.ensureTFLiteLoaded(
-        env: const <String, String>{},
-        platformOverride: 'linux',
-      );
-      expect(HandLandmarkModelRunner.nativeLibForTest(), isNull);
-    });
   });
 
   group('PalmDetector anchor generation', () {

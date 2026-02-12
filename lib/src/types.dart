@@ -553,8 +553,9 @@ class Hand {
         .map((l) =>
             '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}')
         .join('\n');
-    final String gestureInfo =
-        gesture != null ? '  gesture=${gesture!.type.name} (${gesture!.confidence.toStringAsFixed(3)}),\n' : '';
+    final String gestureInfo = gesture != null
+        ? '  gesture=${gesture!.type.name} (${gesture!.confidence.toStringAsFixed(3)}),\n'
+        : '';
     return 'Hand(\n'
         '  score=${score.toStringAsFixed(3)},\n'
         '$gestureInfo'

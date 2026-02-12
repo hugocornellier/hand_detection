@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:meta/meta.dart';
-import 'package:tflite_flutter_custom/tflite_flutter.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'image_utils.dart';
 import 'types.dart';
 
@@ -304,7 +304,9 @@ class PalmDetector {
       growable: false,
     );
 
-    _iso = await IsolateInterpreter.create(address: interpreter.address);
+    if (_delegate == null) {
+      _iso = await IsolateInterpreter.create(address: interpreter.address);
+    }
     _isInitialized = true;
   }
 
@@ -539,7 +541,8 @@ class PalmDetector {
   ///
   /// Optimization: Precomputes AABBs once (O(n)) before the O(n²) comparison loop
   /// to avoid redundant coordinate conversions.
-  List<PalmDetection> _nms(List<PalmDetection> palms, {double iouThreshold = 0.45}) {
+  List<PalmDetection> _nms(List<PalmDetection> palms,
+      {double iouThreshold = 0.45}) {
     if (palms.isEmpty) return palms;
 
     // Sort by score descending

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'package:tflite_flutter_custom/tflite_flutter.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'types.dart';
 
 /// Gesture recognition using MediaPipe's gesture embedder and classifier models.
@@ -59,9 +59,6 @@ class GestureRecognizer {
   // Output: [1, 8] gesture probabilities
   late List<List<double>> _gestureOutput;
 
-  // Pre-allocated buffer for softmax computation to avoid per-call allocations
-  late List<double> _softmaxBuffer;
-
   /// Creates a gesture recognizer with the specified minimum confidence threshold.
   ///
   /// Parameters:
@@ -82,8 +79,10 @@ class GestureRecognizer {
     _embedderInterpreter =
         await Interpreter.fromAsset(embedderPath, options: embedderOptions);
     _embedderInterpreter!.allocateTensors();
-    _embedderIso =
-        await IsolateInterpreter.create(address: _embedderInterpreter!.address);
+    if (_embedderDelegate == null) {
+      _embedderIso = await IsolateInterpreter.create(
+          address: _embedderInterpreter!.address);
+    }
 
     // Load classifier model
     const classifierPath =
@@ -93,8 +92,10 @@ class GestureRecognizer {
     _classifierInterpreter =
         await Interpreter.fromAsset(classifierPath, options: classifierOptions);
     _classifierInterpreter!.allocateTensors();
-    _classifierIso = await IsolateInterpreter.create(
-        address: _classifierInterpreter!.address);
+    if (_classifierDelegate == null) {
+      _classifierIso = await IsolateInterpreter.create(
+          address: _classifierInterpreter!.address);
+    }
 
     // Pre-allocate input buffers for embedder
     // hand: [1, 21, 3]
@@ -140,9 +141,6 @@ class GestureRecognizer {
       (_) => List<double>.filled(8, 0.0, growable: false),
       growable: false,
     );
-
-    // Softmax buffer for 8 gesture classes
-    _softmaxBuffer = List<double>.filled(8, 0.0, growable: false);
 
     _isInitialized = true;
   }
@@ -253,13 +251,24 @@ class GestureRecognizer {
 
     // Stage 1: Run embedder
     // Inputs: hand (index 0), handedness (index 1), world_hand (index 2)
-    await _embedderIso!.runForMultipleInputs(
-      [_handInput, _handednessInput, _worldHandInput],
-      {0: _embeddingOutput},
-    );
+    if (_embedderIso != null) {
+      await _embedderIso!.runForMultipleInputs(
+        [_handInput, _handednessInput, _worldHandInput],
+        {0: _embeddingOutput},
+      );
+    } else {
+      _embedderInterpreter!.runForMultipleInputs(
+        [_handInput, _handednessInput, _worldHandInput],
+        {0: _embeddingOutput},
+      );
+    }
 
     // Stage 2: Run classifier
-    await _classifierIso!.run(_embeddingOutput, _gestureOutput);
+    if (_classifierIso != null) {
+      await _classifierIso!.run(_embeddingOutput, _gestureOutput);
+    } else {
+      _classifierInterpreter!.run(_embeddingOutput, _gestureOutput);
+    }
 
     // Find the gesture with highest probability
     // Note: The classifier already outputs softmax probabilities (sum to 1.0),
@@ -287,38 +296,5 @@ class GestureRecognizer {
     final gestureType = GestureType.values[maxIdx];
 
     return GestureResult(type: gestureType, confidence: confidence);
-  }
-
-  /// Applies softmax to convert logits to probabilities.
-  ///
-  /// Uses pre-allocated [_softmaxBuffer] to avoid per-call allocations.
-  /// Caller must not retain reference to returned list across calls.
-  List<double> _softmax(List<double> logits) {
-    assert(logits.length == 8, 'Softmax expects exactly 8 logits');
-
-    // Find max for numerical stability
-    double maxLogit = logits[0];
-    for (int i = 1; i < 8; i++) {
-      if (logits[i] > maxLogit) maxLogit = logits[i];
-    }
-
-    // Compute exp(logit - max) and sum in single pass
-    double sum = 0.0;
-    for (int i = 0; i < 8; i++) {
-      final exp = math.exp(logits[i] - maxLogit);
-      _softmaxBuffer[i] = exp;
-      sum += exp;
-    }
-
-    // Guard against division by zero (all logits extremely negative)
-    if (sum == 0.0) sum = 1e-10;
-
-    // Normalize in-place
-    final invSum = 1.0 / sum;
-    for (int i = 0; i < 8; i++) {
-      _softmaxBuffer[i] *= invSum;
-    }
-
-    return _softmaxBuffer;
   }
 }

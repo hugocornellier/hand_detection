@@ -128,7 +128,8 @@ class HandDetector {
     _palm = PalmDetector(scoreThreshold: detectorConf);
     _lm = HandLandmarkModelRunner(poolSize: this.interpreterPoolSize);
     if (enableGestures) {
-      _gestureRecognizer = GestureRecognizer(minConfidence: gestureMinConfidence);
+      _gestureRecognizer =
+          GestureRecognizer(minConfidence: gestureMinConfidence);
     }
   }
 
@@ -141,17 +142,13 @@ class HandDetector {
       await dispose();
     }
 
-    // On desktop platforms the TensorFlow Lite C library must be loaded
-    // into the process before creating any interpreters. This ensures the
-    // native dylib/so is available for both palm and landmark models.
-    await HandLandmarkModelRunner.ensureTFLiteLoaded();
-
     await _palm.initialize(performanceConfig: performanceConfig);
     await _lm.initialize(landmarkModel, performanceConfig: performanceConfig);
 
     // Initialize gesture recognizer if enabled
     if (_gestureRecognizer != null) {
-      await _gestureRecognizer!.initialize(performanceConfig: performanceConfig);
+      await _gestureRecognizer!
+          .initialize(performanceConfig: performanceConfig);
     }
 
     _isInitialized = true;
@@ -240,9 +237,8 @@ class HandDetector {
     }());
 
     // Limit detections (NMS guarantees highest-scored first)
-    final limitedPalms = palms.length > maxDetections
-        ? palms.sublist(0, maxDetections)
-        : palms;
+    final limitedPalms =
+        palms.length > maxDetections ? palms.sublist(0, maxDetections) : palms;
 
     if (mode == HandMode.boxes) {
       return _palmsToHands(image, limitedPalms, []);

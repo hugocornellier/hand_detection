@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:path/path.dart' as p;
-import 'package:meta/meta.dart';
-import 'package:tflite_flutter_custom/tflite_flutter.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'image_utils.dart';
 import 'types.dart';
 
@@ -17,7 +14,7 @@ import 'types.dart';
 /// Also holds pre-allocated input/output buffers to avoid GC pressure.
 class _InterpreterInstance {
   final Interpreter interpreter;
-  final IsolateInterpreter isolateInterpreter;
+  final IsolateInterpreter? isolateInterpreter;
 
   // Pre-allocated input buffer as flat Float32List [1 * 224 * 224 * 3]
   final Float32List inputBuffer;
@@ -42,7 +39,7 @@ class _InterpreterInstance {
 
   /// Disposes interpreter and isolate wrapper.
   Future<void> dispose() async {
-    isolateInterpreter.close();
+    isolateInterpreter?.close();
     interpreter.close();
   }
 }
@@ -75,7 +72,6 @@ class HandLandmarkModelRunner {
   int _poolCounter = 0;
 
   bool _isInitialized = false;
-  static ffi.DynamicLibrary? _tfliteLib;
 
   /// Input dimensions (224x224 for MediaPipe hand landmark model).
   static const int inputSize = 224;
@@ -83,78 +79,6 @@ class HandLandmarkModelRunner {
   /// Creates a landmark model runner with the specified pool size.
   HandLandmarkModelRunner({int poolSize = 1})
       : _poolSize = poolSize.clamp(1, 10);
-
-  /// Ensures TensorFlow Lite native library is loaded for desktop platforms.
-  static Future<void> ensureTFLiteLoaded({
-    Map<String, String>? env,
-    String? platformOverride,
-  }) async {
-    if (_tfliteLib != null) return;
-
-    final Map<String, String> environment = env ?? Platform.environment;
-    final String platform = platformOverride ?? _platformString();
-
-    // Optional override for local testing: set HAND_TFLITE_LIB to an absolute path.
-    final envLibPath = environment['HAND_TFLITE_LIB'];
-    if (envLibPath != null && envLibPath.isNotEmpty) {
-      _tfliteLib = ffi.DynamicLibrary.open(envLibPath);
-      return;
-    }
-
-    final exe = File(Platform.resolvedExecutable);
-    final exeDir = exe.parent;
-
-    late final List<String> candidates;
-
-    if (platform == 'windows') {
-      candidates = [
-        p.join(exeDir.path, 'libtensorflowlite_c-win.dll'),
-        'libtensorflowlite_c-win.dll',
-      ];
-    } else if (platform == 'linux') {
-      candidates = [
-        p.join(exeDir.path, 'lib', 'libtensorflowlite_c-linux.so'),
-        'libtensorflowlite_c-linux.so',
-      ];
-    } else if (platform == 'macos') {
-      final contents = exeDir.parent;
-      candidates = [
-        p.join(contents.path, 'Resources', 'libtensorflowlite_c-mac.dylib'),
-        p.join(Directory.current.path, 'macos', 'Frameworks',
-            'libtensorflowlite_c-mac.dylib'),
-      ];
-    } else {
-      _tfliteLib = ffi.DynamicLibrary.process();
-      return;
-    }
-
-    for (final String c in candidates) {
-      try {
-        if (c.contains(p.separator)) {
-          if (!File(c).existsSync()) continue;
-        }
-        _tfliteLib = ffi.DynamicLibrary.open(c);
-        return;
-      } catch (_) {}
-    }
-  }
-
-  static String _platformString() {
-    if (Platform.isWindows) return 'windows';
-    if (Platform.isLinux) return 'linux';
-    if (Platform.isMacOS) return 'macos';
-    return 'other';
-  }
-
-  /// Resets the TFLite native library cache for testing.
-  @visibleForTesting
-  static void resetNativeLibForTest() {
-    _tfliteLib = null;
-  }
-
-  /// Returns the cached TFLite native library instance for testing.
-  @visibleForTesting
-  static ffi.DynamicLibrary? nativeLibForTest() => _tfliteLib;
 
   /// Initializes the hand landmark model with the specified variant.
   ///
@@ -169,7 +93,6 @@ class HandLandmarkModelRunner {
     PerformanceConfig? performanceConfig,
   }) async {
     if (_isInitialized) await dispose();
-    await ensureTFLiteLoaded();
 
     final String path = _getModelPath(model);
 
@@ -184,8 +107,9 @@ class HandLandmarkModelRunner {
       interpreter.resizeInputTensor(0, [1, inputSize, inputSize, 3]);
       interpreter.allocateTensors();
 
-      final isolateInterpreter =
-          await IsolateInterpreter.create(address: interpreter.address);
+      final isolateInterpreter = delegate == null
+          ? await IsolateInterpreter.create(address: interpreter.address)
+          : null;
 
       // Pre-allocate input buffer as flat Float32List [1 * 224 * 224 * 3]
       final inputBuffer = Float32List(inputSize * inputSize * 3);
@@ -340,16 +264,25 @@ class HandLandmarkModelRunner {
       resizedImage.dispose();
       paddedImage.dispose();
 
-      // Run inference using IsolateInterpreter for thread safety
-      await instance.isolateInterpreter.runForMultipleInputs(
-        [instance.inputBuffer.buffer],
-        {
-          0: instance.outputLandmarks,
-          1: instance.outputScore,
-          2: instance.outputHandedness,
-          3: instance.outputWorldLandmarks,
-        },
-      );
+      // Run inference using IsolateInterpreter for thread safety,
+      // or direct invocation when delegates are active
+      final outputs = {
+        0: instance.outputLandmarks,
+        1: instance.outputScore,
+        2: instance.outputHandedness,
+        3: instance.outputWorldLandmarks,
+      };
+      if (instance.isolateInterpreter != null) {
+        await instance.isolateInterpreter!.runForMultipleInputs(
+          [instance.inputBuffer.buffer],
+          outputs,
+        );
+      } else {
+        instance.interpreter.runForMultipleInputs(
+          [instance.inputBuffer.buffer],
+          outputs,
+        );
+      }
 
       // Parse landmarks and transform to original crop pixel space
       // This matches Python's postprocessing: (raw - half_pad) / resize_scale
