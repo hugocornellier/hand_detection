@@ -44,7 +44,6 @@ void main() {
         mat.dispose();
       }
     });
-
   });
 
   group('PalmDetector anchor generation', () {

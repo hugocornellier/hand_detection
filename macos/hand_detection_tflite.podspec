@@ -2,7 +2,7 @@ Pod::Spec.new do |s|
   s.name                  = 'hand_detection_tflite'
   s.version               = '0.0.1'
   s.summary               = 'Hand detection via TensorFlow Lite (macOS)'
-  s.description           = 'Flutter plugin that ships a TFLite C API dylib for macOS.'
+  s.description           = 'Flutter plugin for on-device hand detection using TensorFlow Lite.'
   s.homepage              = 'https://github.com/your/repo'
   s.license               = { :type => 'MIT' }
   s.authors               = { 'You' => 'you@example.com' }
@@ -11,11 +11,10 @@ Pod::Spec.new do |s|
   s.platform              = :osx, '11.0'
   s.swift_version         = '5.0'
 
-  s.source_files          = 'Classes/**/*'
+  s.source_files          = 'hand_detection_tflite/Sources/hand_detection_tflite/**/*'
 
   s.dependency            'FlutterMacOS'
   s.static_framework      = true
 
-  s.resources             = ['Frameworks/libtensorflowlite_c-mac.dylib']
-  s.preserve_paths        = ['Frameworks/libtensorflowlite_c-mac.dylib']
+  # TFLite libraries are provided by flutter_litert dependency
 end
