@@ -8,13 +8,14 @@ Completely local: no remote API, just pure on-device, offline detection.
 
 ### Hand Detection with 21-Point Landmarks
 
-![Example Screenshot](assets/screenshots/ex1.png)
+![Hand detection example](assets/screenshots/example.png)
 
 ## Features
 
 - On-device hand detection, runs fully offline
 - 21-point hand landmarks with **3D depth information** (x, y, z coordinates)
 - Handedness detection (left/right hand)
+- **Gesture recognition**: closed fist, open palm, pointing up, thumbs down, thumbs up, victory, I love you
 - All coordinates are in absolute pixel coordinates
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
 - Native OpenCV preprocessing (resize/letterbox/crops) for optimized throughput
@@ -182,6 +183,42 @@ if (hand.handedness == Handedness.left) {
 }
 ```
 
+## Gesture Recognition
+
+Enable gesture recognition to classify hand poses into 7 gestures:
+
+![Gesture detection example](assets/screenshots/gesture-detect.png)
+
+| Gesture | Description |
+|---------|-------------|
+| closedFist | Closed fist |
+| openPalm | Open palm |
+| pointingUp | Index finger pointing up |
+| thumbDown | Thumbs down |
+| thumbUp | Thumbs up |
+| victory | Victory / peace sign |
+| iLoveYou | "I love you" sign |
+
+### Enabling Gestures
+
+```dart
+final detector = HandDetector(
+  enableGestures: true,
+  gestureMinConfidence: 0.5, // optional, default 0.5
+);
+await detector.initialize();
+
+final hands = await detector.detect(imageBytes);
+for (final hand in hands) {
+  if (hand.hasGesture) {
+    print('Gesture: ${hand.gesture!.type.name}');
+    print('Confidence: ${hand.gesture!.confidence}');
+  }
+}
+```
+
+Gesture recognition uses a two-stage pipeline (gesture embedder + classifier) and requires `HandMode.boxesAndLandmarks` (the default mode).
+
 ## Detection Modes
 
 This package supports two detection modes:
@@ -218,6 +255,8 @@ final detector = HandDetector(
   minLandmarkScore: 0.5,                 // Minimum landmark confidence (0.0-1.0)
   interpreterPoolSize: 1,                // TFLite interpreter pool size
   performanceConfig: PerformanceConfig.xnnpack(), // Performance optimization
+  enableGestures: false,                 // Enable gesture recognition
+  gestureMinConfidence: 0.5,             // Minimum gesture confidence (0.0-1.0)
 );
 ```
 

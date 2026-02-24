@@ -5,8 +5,8 @@
 // - Error handling (works in standard test environment)
 // - Detection with real sample images (requires device/platform-specific testing)
 // - detect() and detectOnMat() methods
-// - Different model variants (lite, full, heavy)
 // - Different modes (boxes, boxesAndLandmarks)
+// - Gesture recognition
 // - Landmark and bounding box access
 // - Configuration parameters
 // - Edge cases
@@ -27,6 +27,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:hand_detection_tflite/hand_detection_tflite.dart';
 import 'test_config.dart';
+
+// Sample images available in assets/samples/
+const _singleHandA = 'assets/samples/istockphoto-462908027-612x612.jpg';
+const _singleHandB =
+    'assets/samples/360_F_554788951_fLAy5C8e9bha4caBTWVJN6rvTD0pEVfE.jpg';
+const _twoHandsStanding = 'assets/samples/img-standing.png';
+const _twoHandsSideBySide = 'assets/samples/2-hands.png';
+const _twoPalms = 'assets/samples/two-palms.png';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -135,7 +143,7 @@ void main() {
   });
 
   group('HandDetector - detect() with real images', () {
-    test('should detect hands in hand1.jpg with boxesAndLandmarks mode',
+    test('should detect one hand in single-hand image with boxesAndLandmarks',
         () async {
       final detector = HandDetector(
         mode: HandMode.boxesAndLandmarks,
@@ -143,57 +151,57 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      final ByteData data = await rootBundle.load(_singleHandA);
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
-      expect(results, isNotEmpty);
+      expect(results.length, 1);
 
-      for (final hand in results) {
-        // Verify bounding box
-        expect(hand.boundingBox, isNotNull);
-        expect(hand.boundingBox.left, greaterThanOrEqualTo(0));
-        expect(hand.boundingBox.top, greaterThanOrEqualTo(0));
-        expect(hand.boundingBox.right, greaterThan(hand.boundingBox.left));
-        expect(hand.boundingBox.bottom, greaterThan(hand.boundingBox.top));
+      final hand = results.first;
 
-        // Verify score
-        expect(hand.score, greaterThan(0));
-        expect(hand.score, lessThanOrEqualTo(1.0));
+      // Verify bounding box
+      expect(hand.boundingBox, isNotNull);
+      expect(hand.boundingBox.left, greaterThanOrEqualTo(0));
+      expect(hand.boundingBox.top, greaterThanOrEqualTo(0));
+      expect(hand.boundingBox.right, greaterThan(hand.boundingBox.left));
+      expect(hand.boundingBox.bottom, greaterThan(hand.boundingBox.top));
 
-        // Verify landmarks (21 for MediaPipe hand model)
-        expect(hand.hasLandmarks, true);
-        expect(hand.landmarks.length, 21); // Model has 21 landmarks
+      // Verify score
+      expect(hand.score, greaterThan(0));
+      expect(hand.score, lessThanOrEqualTo(1.0));
 
-        // Check image dimensions
-        expect(hand.imageWidth, greaterThan(0));
-        expect(hand.imageHeight, greaterThan(0));
-      }
+      // Verify landmarks (21 for MediaPipe hand model)
+      expect(hand.hasLandmarks, true);
+      expect(hand.landmarks.length, 21);
+
+      // Check image dimensions
+      expect(hand.imageWidth, greaterThan(0));
+      expect(hand.imageHeight, greaterThan(0));
 
       await detector.dispose();
     });
 
-    test('should detect hands in hand2.jpg', () async {
+    test('should detect one hand in second single-hand image', () async {
       final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand2.jpg');
+      final ByteData data = await rootBundle.load(_singleHandB);
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
-      expect(results, isNotEmpty);
+      expect(results.length, 1);
       await detector.dispose();
     });
 
-    test('should detect hands in hand3.jpg', () async {
+    test('should detect two hands in two-hands image', () async {
       final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand3.jpg');
+      final ByteData data = await rootBundle.load(_twoHandsSideBySide);
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
-      expect(results, isNotEmpty);
+      expect(results.length, 2);
       await detector.dispose();
     });
 
@@ -204,7 +212,7 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      final ByteData data = await rootBundle.load(_singleHandA);
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -224,13 +232,72 @@ void main() {
     });
   });
 
+  group('HandDetector - Gesture Recognition', () {
+    test('should recognize gestures when enabled', () async {
+      final detector = HandDetector(
+        mode: HandMode.boxesAndLandmarks,
+        landmarkModel: HandLandmarkModel.full,
+        enableGestures: true,
+      );
+      await detector.initialize();
+
+      final ByteData data = await rootBundle.load(_singleHandA);
+      final Uint8List bytes = data.buffer.asUint8List();
+      final List<Hand> results = await detector.detect(bytes);
+
+      expect(results, isNotEmpty);
+      final hand = results.first;
+      expect(hand.gesture, isNotNull);
+      expect(hand.gesture!.type, GestureType.openPalm);
+      expect(hand.gesture!.confidence, greaterThan(0.5));
+
+      await detector.dispose();
+    });
+
+    test('should not have gesture when disabled', () async {
+      final detector = HandDetector(
+        mode: HandMode.boxesAndLandmarks,
+        landmarkModel: HandLandmarkModel.full,
+        enableGestures: false,
+      );
+      await detector.initialize();
+
+      final ByteData data = await rootBundle.load(_singleHandA);
+      final Uint8List bytes = data.buffer.asUint8List();
+      final List<Hand> results = await detector.detect(bytes);
+
+      expect(results, isNotEmpty);
+      expect(results.first.gesture, isNull);
+
+      await detector.dispose();
+    });
+
+    test('should detect handedness correctly', () async {
+      final detector = HandDetector(
+        mode: HandMode.boxesAndLandmarks,
+        landmarkModel: HandLandmarkModel.full,
+      );
+      await detector.initialize();
+
+      // Single hand images should detect right hand
+      final ByteData data = await rootBundle.load(_singleHandA);
+      final Uint8List bytes = data.buffer.asUint8List();
+      final List<Hand> results = await detector.detect(bytes);
+
+      expect(results.length, 1);
+      expect(results.first.handedness, Handedness.right);
+
+      await detector.dispose();
+    });
+  });
+
   group('HandDetector - detectOnMat() method', () {
     test('should work with pre-decoded cv.Mat image', () async {
       final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
       await detector.initialize();
 
       // Load and decode image using OpenCV
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      final ByteData data = await rootBundle.load(_singleHandA);
       final Uint8List bytes = data.buffer.asUint8List();
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
@@ -265,7 +332,7 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      final ByteData data = await rootBundle.load(_singleHandA);
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Test with detect()
@@ -294,50 +361,6 @@ void main() {
     });
   });
 
-  group('HandDetector - Different Model Variants', () {
-    test('should work with lite model', () async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
-
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Hand> results = await detector.detect(bytes);
-
-      expect(results, isNotEmpty);
-      expect(results.first.hasLandmarks, true);
-
-      await detector.dispose();
-    });
-
-    test('should work with full model', () async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
-
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Hand> results = await detector.detect(bytes);
-
-      expect(results, isNotEmpty);
-      expect(results.first.hasLandmarks, true);
-
-      await detector.dispose();
-    });
-
-    test('should work with heavy model', () async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
-
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Hand> results = await detector.detect(bytes);
-
-      expect(results, isNotEmpty);
-      expect(results.first.hasLandmarks, true);
-
-      await detector.dispose();
-    });
-  });
-
   group('HandDetector - Landmark and BoundingBox Access', () {
     late HandDetector detector;
     late List<Hand> hands;
@@ -346,7 +369,7 @@ void main() {
       detector = HandDetector(landmarkModel: HandLandmarkModel.full);
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      final ByteData data = await rootBundle.load(_singleHandA);
       final Uint8List bytes = data.buffer.asUint8List();
       hands = await detector.detect(bytes);
     });
@@ -496,7 +519,7 @@ void main() {
       );
       await lenientDetector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      final ByteData data = await rootBundle.load(_singleHandA);
       final Uint8List bytes = data.buffer.asUint8List();
 
       final strictResults = await strictDetector.detect(bytes);
@@ -516,7 +539,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      // Use an image with 2 hands to verify maxDetections caps at 1
+      final ByteData data = await rootBundle.load(_twoHandsSideBySide);
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -533,7 +557,7 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      final ByteData data = await rootBundle.load(_singleHandA);
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -553,15 +577,11 @@ void main() {
   });
 
   group('HandDetector - Multiple Images', () {
-    test('should process multiple images sequentially', () async {
+    test('should process multiple single-hand images sequentially', () async {
       final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
       await detector.initialize();
 
-      final images = [
-        'assets/samples/hand1.jpg',
-        'assets/samples/hand2.jpg',
-        'assets/samples/hand3.jpg',
-      ];
+      final images = [_singleHandA, _singleHandB];
 
       for (final imagePath in images) {
         final ByteData data = await rootBundle.load(imagePath);
@@ -574,15 +594,15 @@ void main() {
       await detector.dispose();
     });
 
-    test('should handle different image sizes', () async {
+    test('should handle images with different hand counts', () async {
       final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
       await detector.initialize();
 
       final images = [
-        'assets/samples/hand4.jpg',
-        'assets/samples/hand5.jpg',
-        'assets/samples/hand6.jpg',
-        'assets/samples/hand7.jpg',
+        _singleHandA,
+        _twoHandsSideBySide,
+        _twoPalms,
+        _twoHandsStanding,
       ];
 
       for (final imagePath in images) {
@@ -610,7 +630,7 @@ void main() {
       detector = HandDetector(
         landmarkModel: HandLandmarkModel.full,
         mode: HandMode.boxesAndLandmarks,
-        detectorConf: 0.6,
+        detectorConf: 0.5,
         maxDetections: 10,
         minLandmarkScore: 0.5,
       );
@@ -623,14 +643,11 @@ void main() {
 
     test('sample images yield expected hand counts', () async {
       final expectedCounts = <String, int>{
-        'assets/samples/multi1.jpg': 3,
-        'assets/samples/hand1.jpg': 1,
-        'assets/samples/hand2.jpg': 1,
-        'assets/samples/hand3.jpg': 1,
-        'assets/samples/hand4.jpg': 1,
-        'assets/samples/hand5.jpg': 1,
-        'assets/samples/hand6.jpg': 1,
-        'assets/samples/hand7.jpg': 1,
+        _singleHandA: 1,
+        _singleHandB: 1,
+        _twoHandsStanding: 2,
+        _twoHandsSideBySide: 2,
+        _twoPalms: 2,
       };
 
       for (final entry in expectedCounts.entries) {
@@ -652,7 +669,7 @@ void main() {
       final detector = HandDetector(mode: HandMode.boxes);
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      final ByteData data = await rootBundle.load(_singleHandA);
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -684,7 +701,7 @@ void main() {
       final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/hand1.jpg');
+      final ByteData data = await rootBundle.load(_singleHandA);
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 

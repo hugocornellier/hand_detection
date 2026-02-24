@@ -263,10 +263,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_litert
-      sha256: a822644fee04d2639baf45d0a339cc4e19f046c55101c0bb12159fdafd3c0480
+      sha256: "5cb2cd10a4e8459fc33e54af0198da30d193a6b0d508b47f9056d6c583402943"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.4"
+    version: "0.1.12"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -304,7 +304,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.0.3"
+    version: "0.0.1"
   hooks:
     dependency: transitive
     description:
@@ -647,10 +647,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "19a78f63e83d3a61f00826d09bc2f60e191bf3504183c001262be6ac75589fb8"
+      sha256: "93167629bfc610f71560ab9312acdda4959de4df6fac7492c89ff0d3886f6636"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.8"
+    version: "0.7.9"
   typed_data:
     dependency: transitive
     description:
