@@ -191,7 +191,7 @@ class ImageUtils {
   /// Applies letterbox preprocessing to 256x256 dimensions.
   ///
   /// Convenience method that calls [letterbox] with fixed 256x256 target size.
-  /// Used for BlazePose landmark model preprocessing.
+  /// Used for hand landmark model preprocessing.
   static cv.Mat letterbox256(
     cv.Mat src,
     List<double> ratioOut,

@@ -16,7 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:hand_detection_tflite/hand_detection_tflite.dart';
+import 'package:hand_detection/hand_detection.dart';
 
 /// Test helper to create a minimal 1x1 PNG image
 class TestUtils {

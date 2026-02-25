@@ -1,3 +1,3 @@
-# hand_detection_tflite_example
+# hand_detection_example
 
-A detailed example showing how to use the hand_detection_tflite library.
+A detailed example showing how to use the hand_detection library.

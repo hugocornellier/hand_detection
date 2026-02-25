@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.14)
 
-set(PROJECT_NAME "hand_detection_tflite")
+set(PROJECT_NAME "hand_detection")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
-set(PLUGIN_NAME "hand_detection_tflite_plugin")
+set(PLUGIN_NAME "hand_detection_plugin")
 
 add_library(${PLUGIN_NAME} SHARED
-  "hand_detection_tflite_plugin.cpp"
-  "hand_detection_tflite_plugin.h"
-  "hand_detection_tflite_plugin_c_api.cpp"
-  "include/hand_detection_tflite/hand_detection_tflite_plugin_c_api.h"
+  "hand_detection_plugin.cpp"
+  "hand_detection_plugin.h"
+  "hand_detection_plugin_c_api.cpp"
+  "include/hand_detection/hand_detection_plugin_c_api.h"
 )
 
 apply_standard_settings(${PLUGIN_NAME})

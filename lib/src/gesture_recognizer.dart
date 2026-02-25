@@ -74,7 +74,7 @@ class GestureRecognizer {
 
     // Load embedder model
     const embedderPath =
-        'packages/hand_detection_tflite/assets/models/gesture_embedder.tflite';
+        'packages/hand_detection/assets/models/gesture_embedder.tflite';
     final embedderOptions = _createInterpreterOptions(performanceConfig, true);
     _embedderInterpreter =
         await Interpreter.fromAsset(embedderPath, options: embedderOptions);
@@ -86,7 +86,7 @@ class GestureRecognizer {
 
     // Load classifier model
     const classifierPath =
-        'packages/hand_detection_tflite/assets/models/canned_gesture_classifier.tflite';
+        'packages/hand_detection/assets/models/canned_gesture_classifier.tflite';
     final classifierOptions =
         _createInterpreterOptions(performanceConfig, false);
     _classifierInterpreter =

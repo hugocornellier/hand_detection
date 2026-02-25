@@ -6,7 +6,7 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:hand_detection_tflite/hand_detection_tflite.dart';
+import 'package:hand_detection/hand_detection.dart';
 import 'package:camera_macos/camera_macos_controller.dart';
 import 'package:camera_macos/camera_macos_view.dart';
 import 'package:camera_macos/camera_macos_arguments.dart';

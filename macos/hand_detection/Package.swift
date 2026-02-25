@@ -3,17 +3,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "hand_detection_tflite",
+    name: "hand_detection",
     platforms: [
         .macOS("11.0")
     ],
     products: [
-        .library(name: "hand-detection-tflite", targets: ["hand_detection_tflite"])
+        .library(name: "hand-detection", targets: ["hand_detection"])
     ],
     dependencies: [],
     targets: [
         .target(
-            name: "hand_detection_tflite",
+            name: "hand_detection",
             dependencies: [],
             resources: [
                 .process("PrivacyInfo.xcprivacy"),

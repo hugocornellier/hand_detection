@@ -1,5 +1,5 @@
-name: hand_detection_tflite_example
-description: Example app for hand_detection_tflite
+name: hand_detection_example
+description: Example app for hand_detection
 publish_to: 'none'
 version: 1.0.0
 
@@ -14,7 +14,7 @@ dependencies:
   image_picker: ^1.2.0
   file_selector: ^1.0.3
   file_selector_macos: ^0.9.4+2
-  hand_detection_tflite:
+  hand_detection:
     path: ../
   flutter_colorpicker: ^1.1.0
   path_provider: ^2.1.5

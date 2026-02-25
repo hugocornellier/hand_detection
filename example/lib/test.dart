@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:hand_detection_tflite/hand_detection_tflite.dart';
+import 'package:hand_detection/hand_detection.dart';
 
 Future main() async {
   // 1. initialize

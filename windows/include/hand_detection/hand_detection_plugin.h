@@ -1,5 +1,5 @@
-#ifndef HAND_DETECTION_TFLITE_PUBLIC_PLUGIN_H_
-#define HAND_DETECTION_TFLITE_PUBLIC_PLUGIN_H_
+#ifndef HAND_DETECTION_PUBLIC_PLUGIN_H_
+#define HAND_DETECTION_PUBLIC_PLUGIN_H_
 
 #include <flutter_windows.h>
 
@@ -9,7 +9,7 @@
 #define FLUTTER_PLUGIN_EXPORT __declspec(dllimport)
 #endif
 
-FLUTTER_PLUGIN_EXPORT void HandDetectionTflitePluginRegisterWithRegistrar(
+FLUTTER_PLUGIN_EXPORT void HandDetectionPluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar);
 
-#endif  // HAND_DETECTION_TFLITE_PUBLIC_PLUGIN_H_
+#endif  // HAND_DETECTION_PUBLIC_PLUGIN_H_

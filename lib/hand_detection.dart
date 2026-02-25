@@ -12,7 +12,7 @@
 ///
 /// **Quick Start:**
 /// ```dart
-/// import 'package:hand_detection_tflite/hand_detection_tflite.dart';
+/// import 'package:hand_detection/hand_detection.dart';
 ///
 /// final detector = HandDetector();
 /// await detector.initialize();

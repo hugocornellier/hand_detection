@@ -1,7 +1,7 @@
-# hand_detection_tflite
+# hand_detection
 
-[![pub points](https://img.shields.io/pub/points/hand_detection_tflite?color=2E8B57&label=pub%20points)](https://pub.dev/packages/hand_detection_tflite/score)
-[![pub package](https://img.shields.io/pub/v/hand_detection_tflite.svg)](https://pub.dev/packages/hand_detection_tflite)
+[![pub points](https://img.shields.io/pub/points/hand_detection?color=2E8B57&label=pub%20points)](https://pub.dev/packages/hand_detection/score)
+[![pub package](https://img.shields.io/pub/v/hand_detection.svg)](https://pub.dev/packages/hand_detection)
 
 Flutter implementation of Google's MediaPipe hand detection and landmark models using TensorFlow Lite.
 Completely local: no remote API, just pure on-device, offline detection.
@@ -19,13 +19,13 @@ Completely local: no remote API, just pure on-device, offline detection.
 - All coordinates are in absolute pixel coordinates
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
 - Native OpenCV preprocessing (resize/letterbox/crops) for optimized throughput
-- The [example](https://pub.dev/packages/hand_detection_tflite/example) app illustrates how to detect and render results on images
+- The [example](https://pub.dev/packages/hand_detection/example) app illustrates how to detect and render results on images
 
 ## Quick Start
 
 ```dart
 import 'dart:io';
-import 'package:hand_detection_tflite/hand_detection_tflite.dart';
+import 'package:hand_detection/hand_detection.dart';
 
 Future main() async {
   HandDetector detector = HandDetector();
@@ -65,7 +65,7 @@ await detector.initialize();
 For live camera streams, you can bypass image encoding/decoding entirely by using `detectOnMat()`:
 
 ```dart
-import 'package:hand_detection_tflite/hand_detection_tflite.dart';
+import 'package:hand_detection/hand_detection.dart';
 
 Future<void> processFrame(cv.Mat frame) async {
   final detector = HandDetector();
@@ -152,7 +152,7 @@ for (final landmark in hand.landmarks) {
 Use the `handLandmarkConnections` constant to draw the hand skeleton:
 
 ```dart
-import 'package:hand_detection_tflite/hand_detection_tflite.dart';
+import 'package:hand_detection/hand_detection.dart';
 
 // Draw skeleton connections
 for (final connection in handLandmarkConnections) {
@@ -266,7 +266,7 @@ For real-time hand detection with a camera feed, use `detectOnMat()` to avoid re
 
 ```dart
 import 'package:camera/camera.dart';
-import 'package:hand_detection_tflite/hand_detection_tflite.dart';
+import 'package:hand_detection/hand_detection.dart';
 
 HandDetector detector = HandDetector(
   performanceConfig: PerformanceConfig.xnnpack(),
@@ -297,9 +297,9 @@ camera.startImageStream((CameraImage image) async {
 - Always call `mat.dispose()` after detection
 - Use `HandMode.boxes` for fastest real-time performance
 
-See the full [example app](https://pub.dev/packages/hand_detection_tflite/example) for complete implementation.
+See the full [example app](https://pub.dev/packages/hand_detection/example) for complete implementation.
 
 ## Example
 
-The [sample code](https://pub.dev/packages/hand_detection_tflite/example) from the pub.dev example tab includes a
+The [sample code](https://pub.dev/packages/hand_detection/example) from the pub.dev example tab includes a
 Flutter app that paints detections onto an image: bounding boxes and 21-point hand landmarks with skeleton connections.

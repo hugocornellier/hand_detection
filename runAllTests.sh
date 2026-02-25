@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Run all tests for hand_detection_tflite
+# Run all tests for hand_detection
 # This script runs both regular unit tests and integration tests
 
 set -e  # Exit on any error

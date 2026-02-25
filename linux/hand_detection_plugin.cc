@@ -1,4 +1,4 @@
-#include "include/hand_detection_tflite/hand_detection_tflite_plugin.h"
+#include "include/hand_detection/hand_detection_plugin.h"
 
 #include <flutter_linux/flutter_linux.h>
 #include <gtk/gtk.h>
@@ -6,20 +6,20 @@
 
 #include <cstring>
 
-#include "hand_detection_tflite_plugin_private.h"
+#include "hand_detection_plugin_private.h"
 
-#define HAND_DETECTION_TFLITE_PLUGIN(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj), hand_detection_tflite_plugin_get_type(), \
-                              HandDetectionTflitePlugin))
+#define HAND_DETECTION_PLUGIN(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj), hand_detection_plugin_get_type(), \
+                              HandDetectionPlugin))
 
-struct _HandDetectionTflitePlugin {
+struct _HandDetectionPlugin {
   GObject parent_instance;
 };
 
-G_DEFINE_TYPE(HandDetectionTflitePlugin, hand_detection_tflite_plugin, g_object_get_type())
+G_DEFINE_TYPE(HandDetectionPlugin, hand_detection_plugin, g_object_get_type())
 
-static void hand_detection_tflite_plugin_handle_method_call(
-    HandDetectionTflitePlugin* self,
+static void hand_detection_plugin_handle_method_call(
+    HandDetectionPlugin* self,
     FlMethodCall* method_call) {
   g_autoptr(FlMethodResponse) response = nullptr;
 
@@ -42,30 +42,30 @@ FlMethodResponse* get_platform_version() {
   return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
 }
 
-static void hand_detection_tflite_plugin_dispose(GObject* object) {
-  G_OBJECT_CLASS(hand_detection_tflite_plugin_parent_class)->dispose(object);
+static void hand_detection_plugin_dispose(GObject* object) {
+  G_OBJECT_CLASS(hand_detection_plugin_parent_class)->dispose(object);
 }
 
-static void hand_detection_tflite_plugin_class_init(HandDetectionTflitePluginClass* klass) {
-  G_OBJECT_CLASS(klass)->dispose = hand_detection_tflite_plugin_dispose;
+static void hand_detection_plugin_class_init(HandDetectionPluginClass* klass) {
+  G_OBJECT_CLASS(klass)->dispose = hand_detection_plugin_dispose;
 }
 
-static void hand_detection_tflite_plugin_init(HandDetectionTflitePlugin* self) {}
+static void hand_detection_plugin_init(HandDetectionPlugin* self) {}
 
 static void method_call_cb(FlMethodChannel* channel, FlMethodCall* method_call,
                            gpointer user_data) {
-  HandDetectionTflitePlugin* plugin = HAND_DETECTION_TFLITE_PLUGIN(user_data);
-  hand_detection_tflite_plugin_handle_method_call(plugin, method_call);
+  HandDetectionPlugin* plugin = HAND_DETECTION_PLUGIN(user_data);
+  hand_detection_plugin_handle_method_call(plugin, method_call);
 }
 
-void hand_detection_tflite_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
-  HandDetectionTflitePlugin* plugin = HAND_DETECTION_TFLITE_PLUGIN(
-      g_object_new(hand_detection_tflite_plugin_get_type(), nullptr));
+void hand_detection_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
+  HandDetectionPlugin* plugin = HAND_DETECTION_PLUGIN(
+      g_object_new(hand_detection_plugin_get_type(), nullptr));
 
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
   g_autoptr(FlMethodChannel) channel =
       fl_method_channel_new(fl_plugin_registrar_get_messenger(registrar),
-                            "hand_detection_tflite",
+                            "hand_detection",
                             FL_METHOD_CODEC(codec));
   fl_method_channel_set_method_call_handler(channel, method_call_cb,
                                             g_object_ref(plugin),

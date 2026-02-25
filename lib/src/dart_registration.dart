@@ -1,12 +1,12 @@
-/// Dart plugin registration for hand_detection_tflite.
+/// Dart plugin registration for hand_detection.
 ///
 /// This class provides plugin registration for pure Dart platforms.
-class HandDetectionTfliteDart {
-  /// Creates a [HandDetectionTfliteDart] instance.
+class HandDetectionDart {
+  /// Creates a [HandDetectionDart] instance.
   ///
   /// This constructor is typically not called directly. Plugin registration
   /// happens automatically via the [registerWith] method.
-  HandDetectionTfliteDart();
+  HandDetectionDart();
 
   /// Registers the plugin with the Dart plugin registry.
   ///

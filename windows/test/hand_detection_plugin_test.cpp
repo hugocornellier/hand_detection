@@ -8,9 +8,9 @@
 #include <string>
 #include <variant>
 
-#include "hand_detection_tflite_plugin.h"
+#include "hand_detection_plugin.h"
 
-namespace hand_detection_tflite {
+namespace hand_detection {
 namespace test {
 
 namespace {
@@ -22,8 +22,8 @@ using flutter::MethodResultFunctions;
 
 }  // namespace
 
-TEST(PoseDetectionTflitePlugin, GetPlatformVersion) {
-  PoseDetectionTflitePlugin plugin;
+TEST(HandDetectionPlugin, GetPlatformVersion) {
+  HandDetectionPlugin plugin;
   std::string result_string;
   plugin.HandleMethodCall(
       MethodCall("getPlatformVersion", std::make_unique<EncodableValue>()),
@@ -37,4 +37,4 @@ TEST(PoseDetectionTflitePlugin, GetPlatformVersion) {
 }
 
 }  // namespace test
-}  // namespace hand_detection_tflite
+}  // namespace hand_detection

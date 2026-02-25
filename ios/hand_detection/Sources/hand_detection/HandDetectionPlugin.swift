@@ -1,10 +1,10 @@
 import Flutter
 import UIKit
 
-public class HandDetectionTflitePlugin: NSObject, FlutterPlugin {
+public class HandDetectionPlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "hand_detection_tflite", binaryMessenger: registrar.messenger())
-    let instance = HandDetectionTflitePlugin()
+    let channel = FlutterMethodChannel(name: "hand_detection", binaryMessenger: registrar.messenger())
+    let instance = HandDetectionPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
   }
 

@@ -4,7 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_linux
-  hand_detection_tflite
+  hand_detection
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

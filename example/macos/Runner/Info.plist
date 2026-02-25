@@ -29,7 +29,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSCameraUsageDescription</key>
-	<string>This app requires camera access for pose detection</string>
+	<string>This app requires camera access for hand detection</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app requires microphone access</string>
 </dict>

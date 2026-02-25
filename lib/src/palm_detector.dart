@@ -248,7 +248,7 @@ class PalmDetector {
   /// Initializes the palm detector by loading the TFLite model.
   Future<void> initialize({PerformanceConfig? performanceConfig}) async {
     const String assetPath =
-        'packages/hand_detection_tflite/assets/models/hand_detection.tflite';
+        'packages/hand_detection/assets/models/hand_detection.tflite';
 
     if (_isInitialized) await dispose();
 

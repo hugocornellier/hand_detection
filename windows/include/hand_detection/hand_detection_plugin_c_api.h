@@ -1,5 +1,5 @@
-#ifndef FLUTTER_PLUGIN_HAND_DETECTION_TFLITE_PLUGIN_C_API_H_
-#define FLUTTER_PLUGIN_HAND_DETECTION_TFLITE_PLUGIN_C_API_H_
+#ifndef FLUTTER_PLUGIN_HAND_DETECTION_PLUGIN_C_API_H_
+#define FLUTTER_PLUGIN_HAND_DETECTION_PLUGIN_C_API_H_
 
 #include <flutter_plugin_registrar.h>
 
@@ -13,11 +13,11 @@
 extern "C" {
 #endif
 
-FLUTTER_PLUGIN_EXPORT void HandDetectionTflitePluginCApiRegisterWithRegistrar(
+FLUTTER_PLUGIN_EXPORT void HandDetectionPluginCApiRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar);
 
 #if defined(__cplusplus)
 }  // extern "C"
 #endif
 
-#endif  // FLUTTER_PLUGIN_HAND_DETECTION_TFLITE_PLUGIN_C_API_H_
+#endif  // FLUTTER_PLUGIN_HAND_DETECTION_PLUGIN_C_API_H_

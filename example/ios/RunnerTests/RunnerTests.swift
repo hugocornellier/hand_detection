@@ -3,7 +3,7 @@ import UIKit
 import XCTest
 
 
-@testable import hand_detection_tflite
+@testable import hand_detection
 
 // This demonstrates a simple unit test of the Swift portion of this plugin's implementation.
 //
@@ -12,7 +12,7 @@ import XCTest
 class RunnerTests: XCTestCase {
 
   func testGetPlatformVersion() {
-    let plugin = PoseDetectionTflitePlugin()
+    let plugin = HandDetectionPlugin()
 
     let call = FlutterMethodCall(methodName: "getPlatformVersion", arguments: [])
 

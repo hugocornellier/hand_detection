@@ -1,5 +1,5 @@
-#include "hand_detection_tflite_plugin.h"
-#include "include/hand_detection_tflite/hand_detection_tflite_plugin.h"  // ensures dllexport is seen here
+#include "hand_detection_plugin.h"
+#include "include/hand_detection/hand_detection_plugin.h"  // ensures dllexport is seen here
 
 #include <windows.h>
 #include <VersionHelpers.h>
@@ -10,16 +10,16 @@
 #include <memory>
 #include <sstream>
 
-namespace hand_detection_tflite {
+namespace hand_detection {
 
-void HandDetectionTflitePlugin::RegisterWithRegistrar(
+void HandDetectionPlugin::RegisterWithRegistrar(
     flutter::PluginRegistrarWindows *registrar) {
   auto channel =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
-          registrar->messenger(), "hand_detection_tflite",
+          registrar->messenger(), "hand_detection",
           &flutter::StandardMethodCodec::GetInstance());
 
-  auto plugin = std::make_unique<HandDetectionTflitePlugin>();
+  auto plugin = std::make_unique<HandDetectionPlugin>();
 
   channel->SetMethodCallHandler(
       [plugin_pointer = plugin.get()](const auto &call, auto result) {
@@ -29,10 +29,10 @@ void HandDetectionTflitePlugin::RegisterWithRegistrar(
   registrar->AddPlugin(std::move(plugin));
 }
 
-HandDetectionTflitePlugin::HandDetectionTflitePlugin() {}
-HandDetectionTflitePlugin::~HandDetectionTflitePlugin() {}
+HandDetectionPlugin::HandDetectionPlugin() {}
+HandDetectionPlugin::~HandDetectionPlugin() {}
 
-void HandDetectionTflitePlugin::HandleMethodCall(
+void HandDetectionPlugin::HandleMethodCall(
     const flutter::MethodCall<flutter::EncodableValue> &method_call,
     std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
   if (method_call.method_name().compare("getPlatformVersion") == 0) {
@@ -51,12 +51,12 @@ void HandDetectionTflitePlugin::HandleMethodCall(
   }
 }
 
-}  // namespace hand_detection_tflite
+}  // namespace hand_detection
 
-void HandDetectionTflitePluginRegisterWithRegistrar(
+void HandDetectionPluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar) {
   auto cpp_registrar =
       flutter::PluginRegistrarManager::GetInstance()
           ->GetRegistrar<flutter::PluginRegistrarWindows>(registrar);
-  hand_detection_tflite::HandDetectionTflitePlugin::RegisterWithRegistrar(cpp_registrar);
+  hand_detection::HandDetectionPlugin::RegisterWithRegistrar(cpp_registrar);
 }

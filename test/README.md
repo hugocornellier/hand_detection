@@ -1,6 +1,6 @@
 # Testing Guide
 
-This directory contains tests for the `hand_detection_tflite` package.
+This directory contains tests for the `hand_detection` package.
 
 ## Test Structure
 
@@ -15,11 +15,11 @@ Contains basic unit tests that can run in a pure Dart VM environment:
 Contains full integration tests that run in an actual app environment with TFLite support:
 - ✅ Initialization and disposal
 - ✅ Error handling
-- ✅ Detection with real sample images (pose1-7.jpg)
+- ✅ Detection with real sample images
 - ✅ `detect()` and `detectOnImage()` methods
 - ✅ Different model variants (lite, full, heavy)
 - ✅ Different modes (boxes, boxesAndLandmarks)
-- ✅ Landmark and bounding box access (all 33 BlazePose landmarks)
+- ✅ Landmark and bounding box access (all 21 hand landmarks)
 - ✅ Configuration parameters
 - ✅ Edge cases
 
@@ -85,10 +85,10 @@ flutter test integration_test/
 To run the limited unit tests (only error handling):
 
 ```bash
-flutter test test/pose_detector_test.dart
+flutter test test/hand_detector_test.dart
 ```
 
-**Expected result:** 2 passed (StateError tests), 28 failed (require TFLite) - this is normal!
+**Expected result:** Limited host-safe checks pass; most model-backed tests require platform/native TFLite support.
 
 ## Test Coverage
 
@@ -106,8 +106,8 @@ The test suite covers:
    - Empty images
 
 3. **Real Image Detection**
-   - 7 sample images (pose1.jpg - pose7.jpg)
-   - Multiple people per image
+   - Bundled hand sample images
+   - Multiple hands per image
    - Different image sizes
 
 4. **API Methods**
@@ -116,16 +116,14 @@ The test suite covers:
    - Results consistency between both methods
 
 5. **Model Variants**
-   - PoseLandmarkModel.lite
-   - PoseLandmarkModel.full
-   - PoseLandmarkModel.heavy
+   - HandLandmarkModel.full
 
 6. **Detection Modes**
-   - PoseMode.boxesAndLandmarks (full pipeline)
-   - PoseMode.boxes (fast, no landmarks)
+   - HandMode.boxesAndLandmarks (full pipeline)
+   - HandMode.boxes (fast, no landmarks)
 
 7. **Data Access**
-   - 33 BlazePose landmarks
+   - 21 hand landmarks
    - Bounding box coordinates
    - Normalized coordinates
    - Visibility scores
@@ -139,17 +137,20 @@ The test suite covers:
 
 ## Sample Images
 
-The tests use real pose images from `assets/samples/`:
-- pose1.jpg through pose7.jpg
-- Images contain people in various poses
+The tests use real hand images from `assets/samples/`:
+- `2-hands.png`
+- `two-palms.png`
+- `img-standing.png`
+- Additional bundled sample images
+- Images contain hands in varied positions
 - Different lighting conditions and backgrounds
 - Multiple people in some images
 
 ## Expected Test Results
 
 When running in a proper environment (device or platform-specific tests):
-- ✅ All 25 tests should pass
-- Detection should find people in all sample images
+- ✅ All tests should pass
+- Detection should find hands in sample images
 - Landmarks should have valid coordinates within image bounds
 - Visibility scores should be between 0.0 and 1.0
 
@@ -160,10 +161,7 @@ This error occurs when running `flutter test` without a proper platform environm
 
 **Solutions:**
 - Preferred: Run tests on a device or use platform-specific test commands.
-- Local macOS-only fallback: `lib/src/pose_landmark_model.dart` now checks `POSE_TFLITE_LIB` and the repo path `macos/Frameworks/libtensorflowlite_c-mac.dylib`. On macOS you can point directly to a dylib for host tests:
-  ```bash
-  POSE_TFLITE_LIB=$PWD/macos/Frameworks/libtensorflowlite_c-mac.dylib flutter test test/pose_detector_test.dart
-  ```
+- Use platform or integration tests when native TensorFlow Lite libraries are required.
 
 ### Tests timing out
 Some tests process multiple images and may take longer on slower devices.
@@ -171,7 +169,7 @@ Some tests process multiple images and may take longer on slower devices.
 **Solution:** Increase the test timeout or use the lite model for faster processing.
 
 ### No people detected in images
-If tests fail because no people are detected, verify:
+If tests fail because no hands are detected, verify:
 1. Sample images are properly bundled (check pubspec.yaml)
 2. Model files are accessible
 3. Configuration thresholds aren't too strict

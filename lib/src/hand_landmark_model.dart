@@ -175,7 +175,7 @@ class HandLandmarkModelRunner {
 
   String _getModelPath(HandLandmarkModel model) {
     // Only full model is available to match Python implementation
-    return 'packages/hand_detection_tflite/assets/models/hand_landmark_full.tflite';
+    return 'packages/hand_detection/assets/models/hand_landmark_full.tflite';
   }
 
   /// Returns true if the model runner has been initialized and is ready to use.

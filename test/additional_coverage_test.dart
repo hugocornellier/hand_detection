@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:hand_detection_tflite/hand_detection_tflite.dart';
-import 'package:hand_detection_tflite/src/image_utils.dart';
-import 'package:hand_detection_tflite/src/palm_detector.dart';
-import 'package:hand_detection_tflite/src/hand_landmark_model.dart';
+import 'package:hand_detection/hand_detection.dart';
+import 'package:hand_detection/src/image_utils.dart';
+import 'package:hand_detection/src/palm_detector.dart';
+import 'package:hand_detection/src/hand_landmark_model.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -23,9 +23,9 @@ void main() {
   });
 
   test('Dart registration is callable', () {
-    final instance = HandDetectionTfliteDart();
-    expect(instance, isA<HandDetectionTfliteDart>());
-    expect(() => HandDetectionTfliteDart.registerWith(), returnsNormally);
+    final instance = HandDetectionDart();
+    expect(instance, isA<HandDetectionDart>());
+    expect(() => HandDetectionDart.registerWith(), returnsNormally);
   });
 
   group('HandLandmarkModelRunner', () {

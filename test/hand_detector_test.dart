@@ -25,7 +25,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:hand_detection_tflite/hand_detection_tflite.dart';
+import 'package:hand_detection/hand_detection.dart';
 import 'test_config.dart';
 
 // Sample images available in assets/samples/

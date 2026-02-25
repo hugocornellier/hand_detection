@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name                  = 'hand_detection_tflite'
+  s.name                  = 'hand_detection'
   s.version               = '0.0.1'
   s.summary               = 'Hand detection via TensorFlow Lite (macOS)'
   s.description           = 'Flutter plugin for on-device hand detection using TensorFlow Lite.'
@@ -11,7 +11,7 @@ Pod::Spec.new do |s|
   s.platform              = :osx, '11.0'
   s.swift_version         = '5.0'
 
-  s.source_files          = 'hand_detection_tflite/Sources/hand_detection_tflite/**/*'
+  s.source_files          = 'hand_detection/Sources/hand_detection/**/*'
 
   s.dependency            'FlutterMacOS'
   s.static_framework      = true

@@ -7,11 +7,11 @@
 #include "generated_plugin_registrant.h"
 
 #include <file_selector_windows/file_selector_windows.h>
-#include <hand_detection_tflite/hand_detection_tflite_plugin.h>
+#include <hand_detection/hand_detection_plugin.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   FileSelectorWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FileSelectorWindows"));
-  HandDetectionTflitePluginRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("HandDetectionTflitePlugin"));
+  HandDetectionPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("HandDetectionPlugin"));
 }

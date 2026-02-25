@@ -2,13 +2,13 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "include/hand_detection_tflite/hand_detection_tflite_plugin.h"
-#include "hand_detection_tflite_plugin_private.h"
+#include "include/hand_detection/hand_detection_plugin.h"
+#include "hand_detection_plugin_private.h"
 
-namespace hand_detection_tflite {
+namespace hand_detection {
 namespace test {
 
-TEST(PoseDetectionTflitePlugin, GetPlatformVersion) {
+TEST(HandDetectionPlugin, GetPlatformVersion) {
   g_autoptr(FlMethodResponse) response = get_platform_version();
   ASSERT_NE(response, nullptr);
   ASSERT_TRUE(FL_IS_METHOD_SUCCESS_RESPONSE(response));
@@ -19,4 +19,4 @@ TEST(PoseDetectionTflitePlugin, GetPlatformVersion) {
 }
 
 }  // namespace test
-}  // namespace hand_detection_tflite
+}  // namespace hand_detection
