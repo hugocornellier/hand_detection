@@ -1,6 +1,6 @@
 name: hand_detection
 description: Hand & landmark detection using on-device TFLite models.
-version: 0.0.1
+version: 0.0.4
 
 repository: "https://github.com/hugocornellier/hand_detection"
 homepage: "https://github.com/hugocornellier/hand_detection"
@@ -19,7 +19,7 @@ dependencies:
   flutter:
     sdk: flutter
   opencv_dart: ^2.1.0
-  flutter_litert: ^0.2.0
+  flutter_litert: ^1.0.2
   meta: ^1.17.0
 
 dev_dependencies:

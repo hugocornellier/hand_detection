@@ -7,9 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:hand_detection/hand_detection.dart';
-import 'package:camera_macos/camera_macos_controller.dart';
-import 'package:camera_macos/camera_macos_view.dart';
-import 'package:camera_macos/camera_macos_arguments.dart';
+import 'package:camera/camera.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 /// Calculates the 4 corner points of a rotated rectangle.
@@ -706,7 +704,8 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  CameraMacOSController? _cameraController;
+  CameraController? _cameraController;
+  bool _isImageStreamStarted = false;
   late HandDetector _handDetector;
   int _maxHands = 2;
 
@@ -728,6 +727,7 @@ class _CameraScreenState extends State<CameraScreen> {
     super.initState();
     _createHandDetector();
     _initializeHandDetector();
+    _initCamera();
   }
 
   void _createHandDetector() {
@@ -771,20 +771,140 @@ class _CameraScreenState extends State<CameraScreen> {
     await _initializeHandDetector();
   }
 
-  void _onCameraInitialized(CameraMacOSController controller) {
-    setState(() {
-      _cameraController = controller;
-    });
-
-    // Start image stream
-    controller.startImageStream((CameraImageData? imageData) {
-      if (imageData != null) {
-        _processCameraImage(imageData);
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        if (mounted) {
+          setState(() => _errorMessage = 'No cameras available');
+        }
+        return;
       }
-    });
+
+      final camera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+
+      _cameraController = CameraController(
+        camera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      );
+
+      await _cameraController!.initialize();
+      if (!mounted) return;
+
+      _cameraSize = Size(
+        _cameraController!.value.previewSize!.height,
+        _cameraController!.value.previewSize!.width,
+      );
+
+      await _cameraController!.startImageStream(_processCameraImage);
+      _isImageStreamStarted = true;
+
+      setState(() {});
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Camera init failed: $e');
+      }
+    }
   }
 
-  Future<void> _processCameraImage(CameraImageData imageData) async {
+  /// Converts a CameraImage to BGR cv.Mat for OpenCV processing.
+  ///
+  /// Handles:
+  /// - Desktop BGRA (macOS via camera_desktop): single plane, BGRA byte order
+  /// - Desktop RGBA (Linux via camera_desktop): single plane, RGBA byte order
+  /// - iOS NV12: 2 planes, YUV420
+  /// - Android I420: 3 planes, YUV420
+  cv.Mat? _convertCameraImageToMat(CameraImage image) {
+    try {
+      final int w = image.width;
+      final int h = image.height;
+
+      // Desktop: single-plane 4-channel packed format
+      if (image.planes.length == 1 &&
+          (image.planes[0].bytesPerPixel ?? 1) >= 4) {
+        final bytes = image.planes[0].bytes;
+        final stride = image.planes[0].bytesPerRow;
+        final bgr = Uint8List(w * h * 3);
+
+        int dstIdx = 0;
+        for (int y = 0; y < h; y++) {
+          final rowStart = y * stride;
+          for (int x = 0; x < w; x++) {
+            final srcIdx = rowStart + x * 4;
+            if (Platform.isMacOS) {
+              // BGRA: B=0, G=1, R=2, A=3
+              bgr[dstIdx] = bytes[srcIdx];
+              bgr[dstIdx + 1] = bytes[srcIdx + 1];
+              bgr[dstIdx + 2] = bytes[srcIdx + 2];
+            } else {
+              // RGBA: R=0, G=1, B=2, A=3
+              bgr[dstIdx] = bytes[srcIdx + 2];
+              bgr[dstIdx + 1] = bytes[srcIdx + 1];
+              bgr[dstIdx + 2] = bytes[srcIdx];
+            }
+            dstIdx += 3;
+          }
+        }
+        return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
+      }
+
+      // Mobile: YUV420 format
+      final yRowStride = image.planes[0].bytesPerRow;
+      final yPixelStride = image.planes[0].bytesPerPixel ?? 1;
+      final bgr = Uint8List(w * h * 3);
+
+      void writePixel(int x, int y, int yp, int up, int vp) {
+        int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
+        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
+            .round()
+            .clamp(0, 255);
+        int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
+        final idx = (y * w + x) * 3;
+        bgr[idx] = b;
+        bgr[idx + 1] = g;
+        bgr[idx + 2] = r;
+      }
+
+      if (image.planes.length == 2) {
+        // iOS NV12
+        final uvRowStride = image.planes[1].bytesPerRow;
+        final uvPixelStride = image.planes[1].bytesPerPixel ?? 2;
+        for (int y = 0; y < h; y++) {
+          for (int x = 0; x < w; x++) {
+            final uvIdx = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+            final yIdx = y * yRowStride + x * yPixelStride;
+            writePixel(x, y, image.planes[0].bytes[yIdx],
+                image.planes[1].bytes[uvIdx], image.planes[1].bytes[uvIdx + 1]);
+          }
+        }
+      } else if (image.planes.length >= 3) {
+        // Android I420
+        final uvRowStride = image.planes[1].bytesPerRow;
+        final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+        for (int y = 0; y < h; y++) {
+          for (int x = 0; x < w; x++) {
+            final uvIdx = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+            final yIdx = y * yRowStride + x * yPixelStride;
+            writePixel(x, y, image.planes[0].bytes[yIdx],
+                image.planes[1].bytes[uvIdx], image.planes[2].bytes[uvIdx]);
+          }
+        }
+      } else {
+        return null;
+      }
+
+      return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _processCameraImage(CameraImage image) async {
     // Calculate FPS
     final fps = _fpsCalculator.get();
 
@@ -802,32 +922,16 @@ class _CameraScreenState extends State<CameraScreen> {
     _isProcessing = true;
 
     try {
-      // Convert ARGB (macOS camera format) to BGR cv.Mat
-      // macOS camera outputs ARGB, OpenCV expects BGR
-      final mat =
-          cv.Mat.zeros(imageData.height, imageData.width, cv.MatType.CV_8UC3);
-      final bytes = imageData.bytes;
-      final stride = imageData.bytesPerRow;
-      final matData = mat.data;
-
-      int dstIdx = 0;
-      for (int y = 0; y < imageData.height; y++) {
-        final rowStart = y * stride;
-        for (int x = 0; x < imageData.width; x++) {
-          final srcIdx = rowStart + x * 4;
-          // Input: ARGB (macOS camera format)
-          // Output: BGR (OpenCV format)
-          matData[dstIdx++] = bytes[srcIdx + 3]; // B
-          matData[dstIdx++] = bytes[srcIdx + 2]; // G
-          matData[dstIdx++] = bytes[srcIdx + 1]; // R
-        }
+      final cv.Mat? mat = _convertCameraImageToMat(image);
+      if (mat == null) {
+        _isProcessing = false;
+        return;
       }
 
       // Store camera size from image data
       if (_cameraSize == null) {
         setState(() {
-          _cameraSize =
-              Size(imageData.width.toDouble(), imageData.height.toDouble());
+          _cameraSize = Size(image.width.toDouble(), image.height.toDouble());
         });
       }
 
@@ -867,7 +971,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
-    _cameraController?.destroy();
+    if (_isImageStreamStarted) {
+      try {
+        _cameraController?.stopImageStream();
+      } catch (_) {}
+    }
+    _cameraController?.dispose();
     _handDetector.dispose();
     super.dispose();
   }
@@ -960,11 +1069,10 @@ class _CameraScreenState extends State<CameraScreen> {
       fit: StackFit.expand,
       children: [
         // Camera preview
-        CameraMacOSView(
-          onCameraInizialized: _onCameraInitialized,
-          cameraMode: CameraMacOSMode.photo,
-          enableAudio: false,
-        ),
+        if (_cameraController != null && _cameraController!.value.isInitialized)
+          CameraPreview(_cameraController!)
+        else
+          const Center(child: CircularProgressIndicator()),
 
         // Hand overlay
         if (_currentHands.isNotEmpty && _cameraSize != null)
