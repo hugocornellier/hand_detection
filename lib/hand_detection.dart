@@ -45,6 +45,7 @@
 /// ```
 ///
 /// **Main Classes:**
+/// - [HandDetectorIsolate]: Background isolate wrapper for hand detection
 /// - [HandDetector]: Main API for hand detection
 /// - [Hand]: Detected hand with bounding box, landmarks, handedness, and gesture
 /// - [HandLandmark]: Single keypoint with 3D coordinates (x, y, z) and visibility
@@ -75,7 +76,8 @@ library;
 
 export 'src/types.dart';
 export 'src/hand_detector.dart' show HandDetector;
-export 'src/palm_detector.dart' show PalmDetection;
+export 'src/isolate/hand_detector_isolate.dart' show HandDetectorIsolate;
+export 'src/models/palm_detector.dart' show PalmDetection;
 export 'src/dart_registration.dart';
 
 // Re-export cv.Mat for users who want to use detectOnMat directly

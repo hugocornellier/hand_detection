@@ -189,6 +189,18 @@ class GestureResult {
     required this.confidence,
   });
 
+  /// Serializes this gesture result to a map for cross-isolate transfer.
+  Map<String, dynamic> toMap() => {
+        'type': type.name,
+        'confidence': confidence,
+      };
+
+  /// Deserializes a gesture result from a map.
+  static GestureResult fromMap(Map<String, dynamic> map) => GestureResult(
+        type: GestureType.values.firstWhere((e) => e.name == map['type']),
+        confidence: (map['confidence'] as num).toDouble(),
+      );
+
   @override
   String toString() =>
       'GestureResult(type: ${type.name}, confidence: ${confidence.toStringAsFixed(3)})';
@@ -247,6 +259,24 @@ class HandLandmark {
     required this.z,
     required this.visibility,
   });
+
+  /// Serializes this landmark to a map for cross-isolate transfer.
+  Map<String, dynamic> toMap() => {
+        'type': type.name,
+        'x': x,
+        'y': y,
+        'z': z,
+        'visibility': visibility,
+      };
+
+  /// Deserializes a landmark from a map.
+  static HandLandmark fromMap(Map<String, dynamic> map) => HandLandmark(
+        type: HandLandmarkType.values.firstWhere((e) => e.name == map['type']),
+        x: (map['x'] as num).toDouble(),
+        y: (map['y'] as num).toDouble(),
+        z: (map['z'] as num).toDouble(),
+        visibility: (map['visibility'] as num).toDouble(),
+      );
 
   /// Converts x coordinate to normalized range (0.0 to 1.0)
   double xNorm(int imageWidth) => (x / imageWidth).clamp(0.0, 1.0);
@@ -396,6 +426,22 @@ class BoundingBox {
     required this.right,
     required this.bottom,
   });
+
+  /// Serializes this bounding box to a map for cross-isolate transfer.
+  Map<String, dynamic> toMap() => {
+        'left': left,
+        'top': top,
+        'right': right,
+        'bottom': bottom,
+      };
+
+  /// Deserializes a bounding box from a map.
+  static BoundingBox fromMap(Map<String, dynamic> map) => BoundingBox(
+        left: (map['left'] as num).toDouble(),
+        top: (map['top'] as num).toDouble(),
+        right: (map['right'] as num).toDouble(),
+        bottom: (map['bottom'] as num).toDouble(),
+      );
 }
 
 /// Defines the standard skeleton connections between hand landmarks.
@@ -531,6 +577,43 @@ class Hand {
     this.rotatedSize,
     this.gesture,
   });
+
+  /// Serializes this hand to a map for cross-isolate transfer.
+  Map<String, dynamic> toMap() => {
+        'boundingBox': boundingBox.toMap(),
+        'score': score,
+        'landmarks': landmarks.map((l) => l.toMap()).toList(),
+        'imageWidth': imageWidth,
+        'imageHeight': imageHeight,
+        'handedness': handedness?.name,
+        'rotation': rotation,
+        'rotatedCenterX': rotatedCenterX,
+        'rotatedCenterY': rotatedCenterY,
+        'rotatedSize': rotatedSize,
+        'gesture': gesture?.toMap(),
+      };
+
+  /// Deserializes a hand from a map.
+  static Hand fromMap(Map<String, dynamic> map) => Hand(
+        boundingBox:
+            BoundingBox.fromMap(map['boundingBox'] as Map<String, dynamic>),
+        score: (map['score'] as num).toDouble(),
+        landmarks: (map['landmarks'] as List<dynamic>)
+            .map((l) => HandLandmark.fromMap(l as Map<String, dynamic>))
+            .toList(),
+        imageWidth: map['imageWidth'] as int,
+        imageHeight: map['imageHeight'] as int,
+        handedness: map['handedness'] != null
+            ? Handedness.values.firstWhere((e) => e.name == map['handedness'])
+            : null,
+        rotation: (map['rotation'] as num?)?.toDouble(),
+        rotatedCenterX: (map['rotatedCenterX'] as num?)?.toDouble(),
+        rotatedCenterY: (map['rotatedCenterY'] as num?)?.toDouble(),
+        rotatedSize: (map['rotatedSize'] as num?)?.toDouble(),
+        gesture: map['gesture'] != null
+            ? GestureResult.fromMap(map['gesture'] as Map<String, dynamic>)
+            : null,
+      );
 
   /// Gets a specific landmark by type, or null if not found
   HandLandmark? getLandmark(HandLandmarkType type) {

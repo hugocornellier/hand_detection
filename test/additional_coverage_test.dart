@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:hand_detection/hand_detection.dart';
-import 'package:hand_detection/src/image_utils.dart';
-import 'package:hand_detection/src/palm_detector.dart';
-import 'package:hand_detection/src/hand_landmark_model.dart';
+import 'package:hand_detection/src/util/image_utils.dart';
+import 'package:hand_detection/src/models/palm_detector.dart';
+import 'package:hand_detection/src/models/hand_landmark_model.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

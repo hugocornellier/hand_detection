@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'palm_detector.dart';
+import '../models/palm_detector.dart';
 
 /// Utility functions for image preprocessing and transformations using OpenCV.
 ///

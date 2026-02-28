@@ -1,7 +1,14 @@
-# hand_detection
+<h1 align="center">hand_detection</h1>
 
-[![pub points](https://img.shields.io/pub/points/hand_detection?color=2E8B57&label=pub%20points)](https://pub.dev/packages/hand_detection/score)
-[![pub package](https://img.shields.io/pub/v/hand_detection.svg)](https://pub.dev/packages/hand_detection)
+<p align="center">
+<a href="https://flutter.dev"><img src="https://img.shields.io/badge/Platform-Flutter-02569B?logo=flutter" alt="Platform"></a>
+<a href="https://dart.dev"><img src="https://img.shields.io/badge/language-Dart-blue" alt="Language: Dart"></a>
+<br>
+<a href="https://pub.dev/packages/hand_detection"><img src="https://img.shields.io/pub/v/hand_detection?label=pub.dev&labelColor=333940&logo=dart" alt="Pub Version"></a>
+<a href="https://pub.dev/packages/hand_detection/score"><img src="https://img.shields.io/pub/points/hand_detection?color=2E8B57&label=pub%20points" alt="pub points"></a>
+<a href="https://github.com/hugocornellier/hand_detection/actions/workflows/flutter-ci.yml"><img src="https://github.com/hugocornellier/hand_detection/actions/workflows/flutter-ci.yml/badge.svg" alt="Flutter CI"></a>
+<a href="https://github.com/hugocornellier/hand_detection/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-007A88.svg?logo=apache" alt="License"></a>
+</p>
 
 Flutter implementation of Google's MediaPipe hand detection and landmark models using TensorFlow Lite.
 Completely local: no remote API, just pure on-device, offline detection.
@@ -298,6 +305,83 @@ camera.startImageStream((CameraImage image) async {
 - Use `HandMode.boxes` for fastest real-time performance
 
 See the full [example app](https://pub.dev/packages/hand_detection/example) for complete implementation.
+
+## Background Isolate Detection
+
+For applications that require guaranteed non-blocking UI, use `HandDetectorIsolate`. This runs the **entire** detection pipeline in a background isolate, ensuring all processing happens off the main thread.
+
+```dart
+import 'package:hand_detection/hand_detection.dart';
+
+// Spawn isolate (loads models in background)
+final detector = await HandDetectorIsolate.spawn(
+  enableGestures: true,
+);
+
+// All detection runs in background isolate - UI never blocked
+final hands = await detector.detectHands(imageBytes);
+
+for (final hand in hands) {
+  print('Hand at: ${hand.boundingBox}');
+
+  if (hand.hasLandmarks) {
+    final wrist = hand.getLandmark(HandLandmarkType.wrist);
+    print('Wrist: (${wrist?.x}, ${wrist?.y})');
+  }
+
+  if (hand.hasGesture) {
+    print('Gesture: ${hand.gesture!.type.name}');
+    print('Confidence: ${hand.gesture!.confidence}');
+  }
+}
+
+// Cleanup when done
+await detector.dispose();
+```
+
+### When to Use HandDetectorIsolate
+
+| Use Case | Recommended |
+|----------|-------------|
+| Live camera with 60fps UI requirement | `HandDetectorIsolate` |
+| Processing images in a batch queue | `HandDetectorIsolate` |
+| Simple single-image detection | `HandDetector` |
+| Maximum control over pipeline stages | `HandDetector` |
+
+### Configuration
+
+`HandDetectorIsolate.spawn()` accepts the same configuration options as `HandDetector`:
+
+```dart
+final detector = await HandDetectorIsolate.spawn(
+  mode: HandMode.boxesAndLandmarks,
+  performanceConfig: PerformanceConfig.xnnpack(),
+  enableGestures: true,
+  maxDetections: 4,
+);
+```
+
+### OpenCV Mat Support
+
+`HandDetectorIsolate` fully supports OpenCV `cv.Mat` input, ideal for live camera processing:
+
+```dart
+import 'package:opencv_dart/opencv_dart.dart' as cv;
+
+// From cv.Mat (e.g., decoded image or camera frame)
+final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+final hands = await detector.detectHandsFromMat(mat);
+mat.dispose();
+
+// From raw BGR bytes (e.g., converted camera YUV)
+final hands = await detector.detectHandsFromMatBytes(
+  bgrBytes,
+  width: frameWidth,
+  height: frameHeight,
+);
+```
+
+The Mat is reconstructed in the background isolate using zero-copy transfer, so there's no encoding/decoding overhead.
 
 ## Example
 

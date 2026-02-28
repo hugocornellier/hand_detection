@@ -1,6 +1,6 @@
 name: hand_detection
 description: Hand & landmark detection using on-device TFLite models.
-version: 0.0.4
+version: 1.0.0
 
 repository: "https://github.com/hugocornellier/hand_detection"
 homepage: "https://github.com/hugocornellier/hand_detection"

@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter_litert/flutter_litert.dart';
-import 'types.dart';
+import '../types.dart';
 
 /// Gesture recognition using MediaPipe's gesture embedder and classifier models.
 ///
@@ -136,6 +137,80 @@ class GestureRecognizer {
     );
 
     // Gesture probabilities: [1, 8]
+    _gestureOutput = List.generate(
+      1,
+      (_) => List<double>.filled(8, 0.0, growable: false),
+      growable: false,
+    );
+
+    _isInitialized = true;
+  }
+
+  /// Initializes the gesture recognizer from pre-loaded model bytes.
+  ///
+  /// Used by [HandDetectorIsolate] to initialize within a background isolate
+  /// where Flutter asset loading is not available.
+  Future<void> initializeFromBuffers({
+    required Uint8List embedderBytes,
+    required Uint8List classifierBytes,
+    PerformanceConfig? performanceConfig,
+  }) async {
+    if (_isInitialized) await dispose();
+
+    // Load embedder model
+    final embedderOptions = _createInterpreterOptions(performanceConfig, true);
+    _embedderInterpreter =
+        Interpreter.fromBuffer(embedderBytes, options: embedderOptions);
+    _embedderInterpreter!.allocateTensors();
+    if (_embedderDelegate == null) {
+      _embedderIso = await IsolateInterpreter.create(
+          address: _embedderInterpreter!.address);
+    }
+
+    // Load classifier model
+    final classifierOptions =
+        _createInterpreterOptions(performanceConfig, false);
+    _classifierInterpreter =
+        Interpreter.fromBuffer(classifierBytes, options: classifierOptions);
+    _classifierInterpreter!.allocateTensors();
+    if (_classifierDelegate == null) {
+      _classifierIso = await IsolateInterpreter.create(
+          address: _classifierInterpreter!.address);
+    }
+
+    // Pre-allocate input buffers for embedder
+    _handInput = List.generate(
+      1,
+      (_) => List.generate(
+        21,
+        (_) => List<double>.filled(3, 0.0, growable: false),
+        growable: false,
+      ),
+      growable: false,
+    );
+
+    _handednessInput = List.generate(
+      1,
+      (_) => List<double>.filled(1, 0.0, growable: false),
+      growable: false,
+    );
+
+    _worldHandInput = List.generate(
+      1,
+      (_) => List.generate(
+        21,
+        (_) => List<double>.filled(3, 0.0, growable: false),
+        growable: false,
+      ),
+      growable: false,
+    );
+
+    _embeddingOutput = List.generate(
+      1,
+      (_) => List<double>.filled(128, 0.0, growable: false),
+      growable: false,
+    );
+
     _gestureOutput = List.generate(
       1,
       (_) => List<double>.filled(8, 0.0, growable: false),

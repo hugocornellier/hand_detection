@@ -4,8 +4,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
-import 'image_utils.dart';
-import 'types.dart';
+import '../util/image_utils.dart';
+import '../types.dart';
 
 /// A single interpreter instance with its associated resources.
 ///
@@ -137,6 +137,55 @@ class HandLandmarkModelRunner {
       ));
 
       // Initialize serialization lock for this interpreter
+      _interpreterLocks.add(Future.value());
+    }
+
+    _isInitialized = true;
+  }
+
+  /// Initializes the hand landmark model from pre-loaded model bytes.
+  ///
+  /// Used by [HandDetectorIsolate] to initialize within a background isolate
+  /// where Flutter asset loading is not available.
+  Future<void> initializeFromBuffer(
+    Uint8List modelBytes, {
+    PerformanceConfig? performanceConfig,
+  }) async {
+    if (_isInitialized) await dispose();
+
+    for (int i = 0; i < _poolSize; i++) {
+      final (options, delegate) = _createInterpreterOptions(performanceConfig);
+      if (delegate != null) {
+        _delegates.add(delegate);
+      }
+
+      final interpreter = Interpreter.fromBuffer(modelBytes, options: options);
+      interpreter.resizeInputTensor(0, [1, inputSize, inputSize, 3]);
+      interpreter.allocateTensors();
+
+      final isolateInterpreter = delegate == null
+          ? await IsolateInterpreter.create(address: interpreter.address)
+          : null;
+
+      final inputBuffer = Float32List(inputSize * inputSize * 3);
+
+      final outputLandmarks = [List<double>.filled(63, 0.0, growable: false)];
+      final outputScore = [List<double>.filled(1, 0.0, growable: false)];
+      final outputHandedness = [List<double>.filled(1, 0.0, growable: false)];
+      final outputWorldLandmarks = [
+        List<double>.filled(63, 0.0, growable: false)
+      ];
+
+      _interpreterPool.add(_InterpreterInstance(
+        interpreter: interpreter,
+        isolateInterpreter: isolateInterpreter,
+        inputBuffer: inputBuffer,
+        outputLandmarks: outputLandmarks,
+        outputScore: outputScore,
+        outputHandedness: outputHandedness,
+        outputWorldLandmarks: outputWorldLandmarks,
+      ));
+
       _interpreterLocks.add(Future.value());
     }
 

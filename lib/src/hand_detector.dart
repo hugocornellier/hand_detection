@@ -2,10 +2,10 @@ import 'dart:typed_data';
 import 'dart:math' as math;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'types.dart';
-import 'image_utils.dart';
-import 'palm_detector.dart';
-import 'hand_landmark_model.dart';
-import 'gesture_recognizer.dart';
+import 'util/image_utils.dart';
+import 'models/palm_detector.dart';
+import 'models/hand_landmark_model.dart';
+import 'models/gesture_recognizer.dart';
 
 /// Helper class to store preprocessing data for each detected palm.
 ///
@@ -149,6 +149,48 @@ class HandDetector {
     if (_gestureRecognizer != null) {
       await _gestureRecognizer!
           .initialize(performanceConfig: performanceConfig);
+    }
+
+    _isInitialized = true;
+  }
+
+  /// Initializes the hand detector from pre-loaded model bytes.
+  ///
+  /// Used by [HandDetectorIsolate] to initialize within a background isolate
+  /// where Flutter asset loading is not available.
+  ///
+  /// Parameters:
+  /// - [palmDetectionBytes]: Raw bytes of the palm detection TFLite model
+  /// - [handLandmarkBytes]: Raw bytes of the hand landmark TFLite model
+  /// - [gestureEmbedderBytes]: Raw bytes of the gesture embedder model (required if gestures enabled)
+  /// - [gestureClassifierBytes]: Raw bytes of the gesture classifier model (required if gestures enabled)
+  Future<void> initializeFromBuffers({
+    required Uint8List palmDetectionBytes,
+    required Uint8List handLandmarkBytes,
+    Uint8List? gestureEmbedderBytes,
+    Uint8List? gestureClassifierBytes,
+  }) async {
+    if (_isInitialized) {
+      await dispose();
+    }
+
+    await _palm.initializeFromBuffer(
+      palmDetectionBytes,
+      performanceConfig: performanceConfig,
+    );
+    await _lm.initializeFromBuffer(
+      handLandmarkBytes,
+      performanceConfig: performanceConfig,
+    );
+
+    if (_gestureRecognizer != null &&
+        gestureEmbedderBytes != null &&
+        gestureClassifierBytes != null) {
+      await _gestureRecognizer!.initializeFromBuffers(
+        embedderBytes: gestureEmbedderBytes,
+        classifierBytes: gestureClassifierBytes,
+        performanceConfig: performanceConfig,
+      );
     }
 
     _isInitialized = true;

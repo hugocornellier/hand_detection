@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:image_picker/image_picker.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:hand_detection/hand_detection.dart';
@@ -706,7 +707,7 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? _cameraController;
   bool _isImageStreamStarted = false;
-  late HandDetector _handDetector;
+  HandDetectorIsolate? _handDetectorIsolate;
   int _maxHands = 2;
 
   bool _isInitialized = false;
@@ -716,7 +717,10 @@ class _CameraScreenState extends State<CameraScreen> {
   int _frameCount = 0;
   static const int _frameSkip =
       1; // Process every frame (matches Python default)
-  Size? _cameraSize;
+  Size? _imageSize;
+  int? _sensorOrientation;
+  // ignore: unused_field
+  bool _isFrontCamera = false;
 
   // FPS calculation
   final FpsCalculator _fpsCalculator = FpsCalculator(bufferLen: 10);
@@ -725,35 +729,33 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    _createHandDetector();
     _initializeHandDetector();
     _initCamera();
   }
 
-  void _createHandDetector() {
-    _handDetector = HandDetector(
-      mode: HandMode.boxesAndLandmarks,
-      landmarkModel: HandLandmarkModel.full,
-      detectorConf: 0.6,
-      maxDetections: _maxHands,
-      minLandmarkScore: 0.5,
-      performanceConfig: const PerformanceConfig.xnnpack(),
-      enableGestures: true,
-      gestureMinConfidence: 0.5,
-    );
-  }
-
   Future<void> _initializeHandDetector() async {
     try {
-      // Initialize hand detector
-      await _handDetector.initialize();
-      setState(() {
-        _isInitialized = true;
-      });
+      _handDetectorIsolate = await HandDetectorIsolate.spawn(
+        mode: HandMode.boxesAndLandmarks,
+        landmarkModel: HandLandmarkModel.full,
+        detectorConf: 0.6,
+        maxDetections: _maxHands,
+        minLandmarkScore: 0.5,
+        performanceConfig: const PerformanceConfig.xnnpack(),
+        enableGestures: true,
+        gestureMinConfidence: 0.5,
+      );
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to initialize hand detector: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to initialize hand detector: $e';
+        });
+      }
     }
   }
 
@@ -766,8 +768,8 @@ class _CameraScreenState extends State<CameraScreen> {
     });
 
     // Dispose old detector and create new one
-    _handDetector.dispose();
-    _createHandDetector();
+    _handDetectorIsolate?.dispose();
+    _handDetectorIsolate = null;
     await _initializeHandDetector();
   }
 
@@ -796,20 +798,48 @@ class _CameraScreenState extends State<CameraScreen> {
       await _cameraController!.initialize();
       if (!mounted) return;
 
-      _cameraSize = Size(
-        _cameraController!.value.previewSize!.height,
-        _cameraController!.value.previewSize!.width,
-      );
+      setState(() {
+        _sensorOrientation = _cameraController!.description.sensorOrientation;
+        _isFrontCamera = _cameraController!.description.lensDirection ==
+            CameraLensDirection.front;
+      });
 
       await _cameraController!.startImageStream(_processCameraImage);
       _isImageStreamStarted = true;
-
-      setState(() {});
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('Camera init failed: $e');
+      debugPrint('$st');
       if (mounted) {
         setState(() => _errorMessage = 'Camera init failed: $e');
       }
     }
+  }
+
+  DeviceOrientation _effectiveDeviceOrientation(BuildContext context) {
+    final controller = _cameraController;
+    if (controller != null) {
+      return controller.value.deviceOrientation;
+    }
+    return MediaQuery.of(context).orientation == Orientation.portrait
+        ? DeviceOrientation.portraitUp
+        : DeviceOrientation.landscapeLeft;
+  }
+
+  int? _rotationFlagForFrame({required int width, required int height}) {
+    final DeviceOrientation orientation = _effectiveDeviceOrientation(context);
+    final bool isPortrait = orientation == DeviceOrientation.portraitUp ||
+        orientation == DeviceOrientation.portraitDown;
+
+    if (!isPortrait) return null;
+
+    // If the incoming buffer is already portrait, don't rotate it.
+    if (height >= width) return null;
+
+    final int? sensor = _sensorOrientation;
+    if (sensor == 90) return cv.ROTATE_90_COUNTERCLOCKWISE;
+    if (sensor == 270) return cv.ROTATE_90_CLOCKWISE;
+
+    return null;
   }
 
   /// Converts a CameraImage to BGR cv.Mat for OpenCV processing.
@@ -819,44 +849,48 @@ class _CameraScreenState extends State<CameraScreen> {
   /// - Desktop RGBA (Linux via camera_desktop): single plane, RGBA byte order
   /// - iOS NV12: 2 planes, YUV420
   /// - Android I420: 3 planes, YUV420
-  cv.Mat? _convertCameraImageToMat(CameraImage image) {
+  Future<cv.Mat?> _convertCameraImageToMat(CameraImage image) async {
     try {
-      final int w = image.width;
-      final int h = image.height;
+      final int width = image.width;
+      final int height = image.height;
 
-      // Desktop: single-plane 4-channel packed format
+      // Desktop: camera_desktop provides single-plane 4-channel packed format
       if (image.planes.length == 1 &&
           (image.planes[0].bytesPerPixel ?? 1) >= 4) {
         final bytes = image.planes[0].bytes;
         final stride = image.planes[0].bytesPerRow;
-        final bgr = Uint8List(w * h * 3);
 
-        int dstIdx = 0;
-        for (int y = 0; y < h; y++) {
-          final rowStart = y * stride;
-          for (int x = 0; x < w; x++) {
-            final srcIdx = rowStart + x * 4;
-            if (Platform.isMacOS) {
-              // BGRA: B=0, G=1, R=2, A=3
-              bgr[dstIdx] = bytes[srcIdx];
-              bgr[dstIdx + 1] = bytes[srcIdx + 1];
-              bgr[dstIdx + 2] = bytes[srcIdx + 2];
-            } else {
-              // RGBA: R=0, G=1, B=2, A=3
-              bgr[dstIdx] = bytes[srcIdx + 2];
-              bgr[dstIdx + 1] = bytes[srcIdx + 1];
-              bgr[dstIdx + 2] = bytes[srcIdx];
-            }
-            dstIdx += 3;
-          }
+        // Create a 4-channel Mat directly from camera bytes (handles stride)
+        final matCols = stride ~/ 4;
+        final bgraOrRgba =
+            cv.Mat.fromList(height, matCols, cv.MatType.CV_8UC4, bytes);
+        // Crop out stride padding if present
+        final cropped = matCols != width
+            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
+            : bgraOrRgba;
+
+        // Native SIMD-accelerated color conversion
+        final colorCode =
+            Platform.isMacOS ? cv.COLOR_BGRA2BGR : cv.COLOR_RGBA2BGR;
+        cv.Mat mat = cv.cvtColor(cropped, colorCode);
+
+        if (!identical(cropped, bgraOrRgba)) cropped.dispose();
+        bgraOrRgba.dispose();
+
+        final rotationFlag =
+            _rotationFlagForFrame(width: width, height: height);
+        if (rotationFlag != null) {
+          final rotated = cv.rotate(mat, rotationFlag);
+          mat.dispose();
+          return rotated;
         }
-        return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
+        return mat;
       }
 
       // Mobile: YUV420 format
-      final yRowStride = image.planes[0].bytesPerRow;
-      final yPixelStride = image.planes[0].bytesPerPixel ?? 1;
-      final bgr = Uint8List(w * h * 3);
+      final int yRowStride = image.planes[0].bytesPerRow;
+      final int yPixelStride = image.planes[0].bytesPerPixel ?? 1;
+      final bgrBytes = Uint8List(width * height * 3);
 
       void writePixel(int x, int y, int yp, int up, int vp) {
         int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
@@ -864,42 +898,56 @@ class _CameraScreenState extends State<CameraScreen> {
             .round()
             .clamp(0, 255);
         int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
-        final idx = (y * w + x) * 3;
-        bgr[idx] = b;
-        bgr[idx + 1] = g;
-        bgr[idx + 2] = r;
+        final int bgrIdx = (y * width + x) * 3;
+        bgrBytes[bgrIdx] = b;
+        bgrBytes[bgrIdx + 1] = g;
+        bgrBytes[bgrIdx + 2] = r;
       }
 
       if (image.planes.length == 2) {
         // iOS NV12
-        final uvRowStride = image.planes[1].bytesPerRow;
-        final uvPixelStride = image.planes[1].bytesPerPixel ?? 2;
-        for (int y = 0; y < h; y++) {
-          for (int x = 0; x < w; x++) {
-            final uvIdx = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-            final yIdx = y * yRowStride + x * yPixelStride;
-            writePixel(x, y, image.planes[0].bytes[yIdx],
-                image.planes[1].bytes[uvIdx], image.planes[1].bytes[uvIdx + 1]);
+        final int uvRowStride = image.planes[1].bytesPerRow;
+        final int uvPixelStride = image.planes[1].bytesPerPixel ?? 2;
+        for (int y = 0; y < height; y++) {
+          for (int x = 0; x < width; x++) {
+            final int uvIndex =
+                uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+            final int index = y * yRowStride + x * yPixelStride;
+            writePixel(
+                x,
+                y,
+                image.planes[0].bytes[index],
+                image.planes[1].bytes[uvIndex],
+                image.planes[1].bytes[uvIndex + 1]);
           }
         }
       } else if (image.planes.length >= 3) {
         // Android I420
-        final uvRowStride = image.planes[1].bytesPerRow;
-        final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
-        for (int y = 0; y < h; y++) {
-          for (int x = 0; x < w; x++) {
-            final uvIdx = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-            final yIdx = y * yRowStride + x * yPixelStride;
-            writePixel(x, y, image.planes[0].bytes[yIdx],
-                image.planes[1].bytes[uvIdx], image.planes[2].bytes[uvIdx]);
+        final int uvRowStride = image.planes[1].bytesPerRow;
+        final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+        for (int y = 0; y < height; y++) {
+          for (int x = 0; x < width; x++) {
+            final int uvIndex =
+                uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+            final int index = y * yRowStride + x * yPixelStride;
+            writePixel(x, y, image.planes[0].bytes[index],
+                image.planes[1].bytes[uvIndex], image.planes[2].bytes[uvIndex]);
           }
         }
       } else {
         return null;
       }
 
-      return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
-    } catch (_) {
+      cv.Mat mat = cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
+
+      final rotationFlag = _rotationFlagForFrame(width: width, height: height);
+      if (rotationFlag != null) {
+        final rotated = cv.rotate(mat, rotationFlag);
+        mat.dispose();
+        return rotated;
+      }
+      return mat;
+    } catch (e) {
       return null;
     }
   }
@@ -915,51 +963,49 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     // Skip if already processing
-    if (_isProcessing || !_isInitialized) {
+    if (_isProcessing || !_isInitialized || _handDetectorIsolate == null) {
       return;
     }
 
     _isProcessing = true;
 
     try {
-      final cv.Mat? mat = _convertCameraImageToMat(image);
-      if (mat == null) {
+      cv.Mat? mat = await _convertCameraImageToMat(image);
+      if (mat == null || _handDetectorIsolate == null) {
         _isProcessing = false;
         return;
       }
 
-      // Store camera size from image data
-      if (_cameraSize == null) {
-        setState(() {
-          _cameraSize = Size(image.width.toDouble(), image.height.toDouble());
-        });
-      }
-
-      // Match Python's 640x480 resolution (no aggressive downscaling)
-      cv.Mat processedMat = mat;
+      // Downscale for performance — the palm detection model internally
+      // resizes to 192×192, so full-res frames just waste IPC bandwidth.
       const int maxDim = 640;
       if (mat.cols > maxDim || mat.rows > maxDim) {
         final double scale =
             maxDim / (mat.cols > mat.rows ? mat.cols : mat.rows);
-        processedMat = cv.resize(
+        final cv.Mat resized = cv.resize(
           mat,
           ((mat.cols * scale).toInt(), (mat.rows * scale).toInt()),
           interpolation: cv.INTER_LINEAR,
         );
         mat.dispose();
+        mat = resized;
       }
 
-      // Run hand detection directly on cv.Mat
-      final List<Hand> hands = await _handDetector.detectOnMat(processedMat);
+      // Track detection image size for overlay coordinate mapping.
+      final Size detectionSize = Size(mat.cols.toDouble(), mat.rows.toDouble());
+
+      // Run hand detection in background isolate
+      final List<Hand> hands =
+          await _handDetectorIsolate!.detectHandsFromMat(mat);
 
       // Clean up
-      processedMat.dispose();
+      mat.dispose();
 
-      // Update UI with results
       if (mounted) {
         setState(() {
           _currentHands = hands;
           _currentFps = fps;
+          _imageSize = detectionSize;
         });
       }
     } catch (_) {
@@ -977,7 +1023,7 @@ class _CameraScreenState extends State<CameraScreen> {
       } catch (_) {}
     }
     _cameraController?.dispose();
-    _handDetector.dispose();
+    _handDetectorIsolate?.dispose();
     super.dispose();
   }
 
@@ -1065,23 +1111,40 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
 
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final cameraAspectRatio = _cameraController!.value.aspectRatio;
+    final effectiveOrientation = _effectiveDeviceOrientation(context);
+    final bool isPortrait =
+        effectiveOrientation == DeviceOrientation.portraitUp ||
+            effectiveOrientation == DeviceOrientation.portraitDown;
+    final double displayAspectRatio =
+        isPortrait ? 1.0 / cameraAspectRatio : cameraAspectRatio;
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Camera preview
-        if (_cameraController != null && _cameraController!.value.isInitialized)
-          CameraPreview(_cameraController!)
-        else
-          const Center(child: CircularProgressIndicator()),
-
-        // Hand overlay
-        if (_currentHands.isNotEmpty && _cameraSize != null)
-          CustomPaint(
-            painter: CameraHandOverlayPainter(
-              hands: _currentHands,
-              cameraSize: _cameraSize!,
+        // Camera preview + hand overlay inside a correctly-sized AspectRatio box
+        Center(
+          child: AspectRatio(
+            aspectRatio: displayAspectRatio,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CameraPreview(_cameraController!),
+                if (_currentHands.isNotEmpty && _imageSize != null)
+                  CustomPaint(
+                    painter: CameraHandOverlayPainter(
+                      hands: _currentHands,
+                      imageSize: _imageSize!,
+                    ),
+                  ),
+              ],
             ),
           ),
+        ),
 
         // FPS display (Python style: black outline + white text at top-left)
         Positioned(
@@ -1120,36 +1183,38 @@ class _CameraScreenState extends State<CameraScreen> {
 
 class CameraHandOverlayPainter extends CustomPainter {
   final List<Hand> hands;
-  final Size cameraSize;
+  final Size imageSize;
 
   CameraHandOverlayPainter({
     required this.hands,
-    required this.cameraSize,
+    required this.imageSize,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (hands.isEmpty) return;
 
-    // Get image dimensions from first hand
-    final int imageWidth = hands.first.imageWidth;
-    final int imageHeight = hands.first.imageHeight;
+    // Use the post-rotation image size for correct coordinate mapping.
+    // Matches CameraPreview's cover behavior to avoid stretched/squashed overlays.
+    final double sourceWidth = imageSize.width;
+    final double sourceHeight = imageSize.height;
 
-    // Calculate scaling to map from image coordinates to preview coordinates
-    final double imageAspect = imageWidth / imageHeight;
-    final double canvasAspect = size.width / size.height;
+    final double sourceAspectRatio = sourceWidth / sourceHeight;
+    final double viewportAspectRatio = size.width / size.height;
 
     double scaleX, scaleY;
     double offsetX = 0, offsetY = 0;
 
-    if (canvasAspect > imageAspect) {
-      scaleY = size.height / imageHeight;
+    if (sourceAspectRatio > viewportAspectRatio) {
+      // Source is wider: fit height and crop left/right.
+      scaleY = size.height / sourceHeight;
       scaleX = scaleY;
-      offsetX = (size.width - imageWidth * scaleX) / 2;
+      offsetX = (size.width - sourceWidth * scaleX) / 2;
     } else {
-      scaleX = size.width / imageWidth;
+      // Source is taller: fit width and crop top/bottom.
+      scaleX = size.width / sourceWidth;
       scaleY = scaleX;
-      offsetY = (size.height - imageHeight * scaleY) / 2;
+      offsetY = (size.height - sourceHeight * scaleY) / 2;
     }
 
     for (final hand in hands) {

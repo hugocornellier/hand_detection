@@ -5,8 +5,8 @@ import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:meta/meta.dart';
 import 'package:flutter_litert/flutter_litert.dart';
-import 'image_utils.dart';
-import 'types.dart';
+import '../util/image_utils.dart';
+import '../types.dart';
 
 /// SSD Anchor configuration options for palm detection.
 ///
@@ -284,6 +284,71 @@ class PalmDetector {
     // Pre-allocate output buffers
     // Output 0: [1, 2016, 18] - box regressors
     // Output 1: [1, 2016, 1] - classification scores
+    final numAnchors = _anchors.length;
+    _outputBoxes = List.generate(
+      1,
+      (_) => List.generate(
+        numAnchors,
+        (_) => List<double>.filled(18, 0.0, growable: false),
+        growable: false,
+      ),
+      growable: false,
+    );
+    _outputScores = List.generate(
+      1,
+      (_) => List.generate(
+        numAnchors,
+        (_) => List<double>.filled(1, 0.0, growable: false),
+        growable: false,
+      ),
+      growable: false,
+    );
+
+    if (_delegate == null) {
+      _iso = await IsolateInterpreter.create(address: interpreter.address);
+    }
+    _isInitialized = true;
+  }
+
+  /// Initializes the palm detector from pre-loaded model bytes.
+  ///
+  /// Used by [HandDetectorIsolate] to initialize within a background isolate
+  /// where Flutter asset loading is not available.
+  Future<void> initializeFromBuffer(
+    Uint8List modelBytes, {
+    PerformanceConfig? performanceConfig,
+  }) async {
+    if (_isInitialized) await dispose();
+
+    final options = _createInterpreterOptions(performanceConfig);
+    final interpreter = Interpreter.fromBuffer(modelBytes, options: options);
+    _interpreter = interpreter;
+    interpreter.allocateTensors();
+
+    // Get input shape
+    final inTensor = interpreter.getInputTensor(0);
+    final inShape = inTensor.shape;
+    _inH = inShape[1];
+    _inW = inShape[2];
+
+    // Generate anchors for palm detection
+    final anchorOptions = SSDAnchorOptions(
+      numLayers: 4,
+      minScale: 0.1484375,
+      maxScale: 0.75,
+      inputSizeHeight: _inH,
+      inputSizeWidth: _inW,
+      anchorOffsetX: 0.5,
+      anchorOffsetY: 0.5,
+      strides: [8, 16, 16, 16],
+      aspectRatios: [1.0],
+      reduceBoxesInLowestLayer: false,
+      interpolatedScaleAspectRatio: 1.0,
+      fixedAnchorSize: true,
+    );
+    _anchors = generateAnchors(anchorOptions);
+
+    // Pre-allocate output buffers
     final numAnchors = _anchors.length;
     _outputBoxes = List.generate(
       1,
