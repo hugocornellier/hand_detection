@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  opencv_dart: ^2.1.0
+  opencv_dart: ^2.2.1+4
   image_picker: ^1.2.0
   file_selector: ^1.0.3
   file_selector_macos: ^0.9.4+2

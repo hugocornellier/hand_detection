@@ -1,3 +1,8 @@
+## 1.0.1
+
+* Update `opencv_dart` 2.1.0 -> 2.2.1
+* Update `flutter_litert` 1.0.2 -> 1.0.3
+
 ## 1.0.0
 
 First stable release of `hand_detection`
