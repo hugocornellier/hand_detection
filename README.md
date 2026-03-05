@@ -6,15 +6,16 @@
 <br>
 <a href="https://pub.dev/packages/hand_detection"><img src="https://img.shields.io/pub/v/hand_detection?label=pub.dev&labelColor=333940&logo=dart" alt="Pub Version"></a>
 <a href="https://pub.dev/packages/hand_detection/score"><img src="https://img.shields.io/pub/points/hand_detection?color=2E8B57&label=pub%20points" alt="pub points"></a>
-<a href="https://github.com/hugocornellier/hand_detection/actions/workflows/flutter-ci.yml"><img src="https://github.com/hugocornellier/hand_detection/actions/workflows/flutter-ci.yml/badge.svg" alt="Flutter CI"></a>
+<a href="https://github.com/hugocornellier/hand_detection/actions/workflows/build.yml"><img src="https://github.com/hugocornellier/hand_detection/actions/workflows/build.yml/badge.svg" alt="CI"></a>
+<a href="https://github.com/hugocornellier/hand_detection/actions/workflows/integration.yml"><img src="https://github.com/hugocornellier/hand_detection/actions/workflows/integration.yml/badge.svg" alt="Tests"></a>
 <a href="https://github.com/hugocornellier/hand_detection/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-007A88.svg?logo=apache" alt="License"></a>
 </p>
 
 Flutter implementation of Google's MediaPipe hand detection and landmark models using TensorFlow Lite.
 Completely local: no remote API, just pure on-device, offline detection.
 
-### Hand Detection with 21-Point Landmarks
-
+### Hand Detection with 21-Point Landmarks 
+ 
 ![Hand detection example](assets/screenshots/example.png)
 
 ## Features
