@@ -33,17 +33,14 @@ class ImageUtils {
       newHeight = (imageHeight * ash).toInt();
     }
 
-    // Resize with bilinear interpolation (INTER_LINEAR)
     final resizedImage =
         cv.resize(image, (newWidth, newHeight), interpolation: cv.INTER_LINEAR);
 
-    // Calculate padding for each side
     final padTop = (resizeHeight - newHeight) ~/ 2;
     final padBottom = resizeHeight - newHeight - padTop;
     final padLeft = (resizeWidth - newWidth) ~/ 2;
     final padRight = resizeWidth - newWidth - padLeft;
 
-    // Use copyMakeBorder for reliable padding (avoids ROI copy issues)
     final paddedImage = cv.copyMakeBorder(
       resizedImage,
       padTop,
@@ -77,34 +74,25 @@ class ImageUtils {
     final imageWidth = image.cols;
     final imageHeight = image.rows;
 
-    // Convert normalized coordinates to pixel coordinates
     final cx = palm.sqnRrCenterX * imageWidth;
     final cy = palm.sqnRrCenterY * imageHeight;
 
-    // Calculate size based on image dimensions
     final size = (palm.sqnRrSize * math.max(imageWidth, imageHeight)).round();
     if (size <= 0) return null;
 
-    // Rotation angle (positive direction to match Python, converted to degrees)
     final angleDegrees = palm.rotation * 180.0 / math.pi;
 
-    // Get rotation matrix centered at the palm center
     final rotMat =
         cv.getRotationMatrix2D(cv.Point2f(cx, cy), angleDegrees, 1.0);
 
-    // Adjust translation to crop around the output center
     final outCx = size / 2.0;
     final outCy = size / 2.0;
 
-    // Modify the translation in the rotation matrix:
-    // M[0,2] += outCx - cx
-    // M[1,2] += outCy - cy
     final tx = rotMat.at<double>(0, 2) + outCx - cx;
     final ty = rotMat.at<double>(1, 2) + outCy - cy;
     rotMat.set<double>(0, 2, tx);
     rotMat.set<double>(1, 2, ty);
 
-    // Apply affine transform with SIMD-optimized warpAffine
     final output = cv.warpAffine(
       image,
       rotMat,
@@ -163,11 +151,9 @@ class ImageUtils {
 
     final resized = cv.resize(src, (nw, nh), interpolation: cv.INTER_LINEAR);
 
-    // Calculate padding for right/bottom to ensure exact target dimensions
     final dwRight = tw - nw - dw;
     final dhBottom = th - nh - dh;
 
-    // Use copyMakeBorder for reliable padding with gray fill (114, 114, 114)
     final canvas = cv.copyMakeBorder(
       resized,
       dh,
@@ -212,30 +198,6 @@ class ImageUtils {
     return letterbox(src, 224, 224, ratioOut, dwdhOut);
   }
 
-  /// Transforms bounding box coordinates from letterbox space back to original image space.
-  ///
-  /// Reverses the letterbox transformation by removing padding and unscaling coordinates.
-  ///
-  /// Parameters:
-  /// - [xyxy]: Bounding box in letterbox space as [x1, y1, x2, y2]
-  /// - [ratio]: Scale ratio from letterbox preprocessing
-  /// - [dw]: Horizontal padding from letterbox preprocessing
-  /// - [dh]: Vertical padding from letterbox preprocessing
-  ///
-  /// Returns the bounding box in original image space as [x1, y1, x2, y2].
-  static List<double> scaleFromLetterbox(
-    List<double> xyxy,
-    double ratio,
-    int dw,
-    int dh,
-  ) {
-    final double x1 = (xyxy[0] - dw) / ratio;
-    final double y1 = (xyxy[1] - dh) / ratio;
-    final double x2 = (xyxy[2] - dw) / ratio;
-    final double y2 = (xyxy[3] - dh) / ratio;
-    return [x1, y1, x2, y2];
-  }
-
   /// Converts a cv.Mat to a flat Float32List tensor for TensorFlow Lite.
   ///
   /// Converts pixel values from 0-255 range to normalized 0.0-1.0 range.
@@ -253,11 +215,10 @@ class ImageUtils {
     final tensor = buffer ?? Float32List(size);
     const scale = 1.0 / 255.0;
 
-    // OpenCV uses BGR, convert to RGB and normalize
     for (int i = 0, j = 0; i < totalPixels * 3 && j < size; i += 3, j += 3) {
-      tensor[j] = data[i + 2] * scale; // B -> R
-      tensor[j + 1] = data[i + 1] * scale; // G -> G
-      tensor[j + 2] = data[i] * scale; // R -> B
+      tensor[j] = data[i + 2] * scale;
+      tensor[j + 1] = data[i + 1] * scale;
+      tensor[j + 2] = data[i] * scale;
     }
     return tensor;
   }
@@ -300,63 +261,16 @@ class ImageUtils {
     const double scale = 1.0 / 255.0;
     int byteIndex = 0;
 
-    // OpenCV uses BGR, convert to RGB
     for (int y = 0; y < height; y++) {
       final List<List<double>> row = out[0][y];
       for (int x = 0; x < width; x++) {
         final List<double> pixel = row[x];
-        pixel[0] = bytes[byteIndex + 2] * scale; // B -> R
-        pixel[1] = bytes[byteIndex + 1] * scale; // G -> G
-        pixel[2] = bytes[byteIndex] * scale; // R -> B
+        pixel[0] = bytes[byteIndex + 2] * scale;
+        pixel[1] = bytes[byteIndex + 1] * scale;
+        pixel[2] = bytes[byteIndex] * scale;
         byteIndex += 3;
       }
     }
     return out;
-  }
-
-  /// Reshapes a flat array into a 4D tensor.
-  ///
-  /// Converts a 1D flattened array into a 4D nested list structure with the
-  /// specified dimensions. Used for converting TensorFlow Lite output buffers
-  /// into the expected tensor shape.
-  ///
-  /// Parameters:
-  /// - [flat]: Flat array of values (length must equal dim1 * dim2 * dim3 * dim4)
-  /// - [dim1]: First dimension size (batch)
-  /// - [dim2]: Second dimension size (height/rows)
-  /// - [dim3]: Third dimension size (width/columns)
-  /// - [dim4]: Fourth dimension size (channels/features)
-  ///
-  /// Returns a 4D tensor [dim1, dim2, dim3, dim4] populated from [flat] in row-major order.
-  static List<List<List<List<double>>>> reshapeToTensor4D(
-    List<double> flat,
-    int dim1,
-    int dim2,
-    int dim3,
-    int dim4,
-  ) {
-    final List<List<List<List<double>>>> result = List.generate(
-      dim1,
-      (_) => List.generate(
-        dim2,
-        (_) => List.generate(
-          dim3,
-          (_) => List<double>.filled(dim4, 0.0),
-        ),
-      ),
-    );
-
-    int index = 0;
-    for (int i = 0; i < dim1; i++) {
-      for (int j = 0; j < dim2; j++) {
-        for (int k = 0; k < dim3; k++) {
-          for (int l = 0; l < dim4; l++) {
-            result[i][j][k][l] = flat[index++];
-          }
-        }
-      }
-    }
-
-    return result;
   }
 }

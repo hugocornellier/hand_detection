@@ -155,7 +155,6 @@ class HandDetectorIsolate {
     }
 
     try {
-      // Load all model assets from Flutter bundles in parallel
       const palmPath =
           'packages/hand_detection/assets/models/hand_detection.tflite';
       const landmarkPath =
@@ -311,7 +310,7 @@ class HandDetectorIsolate {
   /// and gesture recognition) runs in the background isolate.
   ///
   /// Parameters:
-  /// - [imageBytes]: Encoded image data (JPEG, PNG, etc.)
+  /// - [imageBytes]: Encoded image data (JPEG, PNG, etc.) as a [List<int>] or [Uint8List]
   ///
   /// Returns a list of [Hand] objects, one per detected hand.
   ///
@@ -319,11 +318,13 @@ class HandDetectorIsolate {
   /// ```dart
   /// final hands = await detector.detectHands(imageBytes);
   /// ```
-  Future<List<Hand>> detectHands(Uint8List imageBytes) async {
+  Future<List<Hand>> detectHands(List<int> imageBytes) async {
+    final Uint8List bytes =
+        imageBytes is Uint8List ? imageBytes : Uint8List.fromList(imageBytes);
     final List<dynamic> result = await _sendRequest<List<dynamic>>(
       'detect',
       {
-        'bytes': TransferableTypedData.fromList([imageBytes]),
+        'bytes': TransferableTypedData.fromList([bytes]),
       },
     );
 

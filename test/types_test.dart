@@ -59,9 +59,9 @@ void main() {
       expect(config.getEffectiveThreadCount(), 8);
     });
 
-    test('default constructor uses disabled mode', () {
+    test('default constructor uses auto mode', () {
       const config = PerformanceConfig();
-      expect(config.mode, PerformanceMode.disabled);
+      expect(config.mode, PerformanceMode.auto);
       expect(config.numThreads, isNull);
     });
 
@@ -78,14 +78,16 @@ void main() {
   });
 
   group('PerformanceMode enum', () {
-    test('has 3 values', () {
-      expect(PerformanceMode.values.length, 3);
+    test('has 5 values', () {
+      expect(PerformanceMode.values.length, 5);
     });
 
     test('values in expected order', () {
       expect(PerformanceMode.disabled.index, 0);
       expect(PerformanceMode.xnnpack.index, 1);
-      expect(PerformanceMode.auto.index, 2);
+      expect(PerformanceMode.gpu.index, 2);
+      expect(PerformanceMode.coreml.index, 3);
+      expect(PerformanceMode.auto.index, 4);
     });
   });
 

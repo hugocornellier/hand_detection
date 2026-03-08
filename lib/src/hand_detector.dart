@@ -51,8 +51,8 @@ class _HandCropData {
 /// 1. Palm detection using SSD-based detector with rotation rectangle output
 /// 2. Hand landmark model to extract 21 keypoints per detected hand
 ///
-/// This is a port of the Python hand detection library using the same models
-/// and algorithms for anchor generation, box decoding, and rotation handling.
+/// Uses the same models and algorithms as MediaPipe for anchor generation,
+/// box decoding, and rotation handling.
 ///
 /// Usage:
 /// ```dart
@@ -108,7 +108,8 @@ class HandDetector {
   /// - [detectorConf]: Palm detection confidence threshold (0.0-1.0). Default: 0.45
   /// - [maxDetections]: Maximum number of hands to detect. Default: 10
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
-  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1
+  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1.
+  ///   Forced to 1 when a performance delegate (XNNPACK/auto) is enabled.
   /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: no acceleration
   /// - [enableGestures]: Whether to run gesture recognition. Default: false
   /// - [gestureMinConfidence]: Minimum confidence for gesture recognition (0.0-1.0). Default: 0.5
@@ -135,7 +136,7 @@ class HandDetector {
 
   /// Initializes the hand detector by loading TensorFlow Lite models.
   ///
-  /// Must be called before [detect] or [detectOnImage].
+  /// Must be called before [detect] or [detectOnMat].
   /// If already initialized, will dispose existing models and reinitialize.
   Future<void> initialize() async {
     if (_isInitialized) {
@@ -145,7 +146,6 @@ class HandDetector {
     await _palm.initialize(performanceConfig: performanceConfig);
     await _lm.initialize(landmarkModel, performanceConfig: performanceConfig);
 
-    // Initialize gesture recognizer if enabled
     if (_gestureRecognizer != null) {
       await _gestureRecognizer!
           .initialize(performanceConfig: performanceConfig);
@@ -162,8 +162,8 @@ class HandDetector {
   /// Parameters:
   /// - [palmDetectionBytes]: Raw bytes of the palm detection TFLite model
   /// - [handLandmarkBytes]: Raw bytes of the hand landmark TFLite model
-  /// - [gestureEmbedderBytes]: Raw bytes of the gesture embedder model (required if gestures enabled)
-  /// - [gestureClassifierBytes]: Raw bytes of the gesture classifier model (required if gestures enabled)
+  /// - [gestureEmbedderBytes]: Raw bytes of the gesture embedder model (optional; required for gesture recognition)
+  /// - [gestureClassifierBytes]: Raw bytes of the gesture classifier model (optional; required for gesture recognition)
   Future<void> initializeFromBuffers({
     required Uint8List palmDetectionBytes,
     required Uint8List handLandmarkBytes,
@@ -263,11 +263,8 @@ class HandDetector {
           'HandDetector not initialized. Call initialize() first.');
     }
 
-    // Stage 1: Detect palms
-    // NMS returns detections in descending score order (sorted before suppression)
     final List<PalmDetection> palms = await _palm.detectOnMat(image);
 
-    // Debug assertion: verify NMS maintains score-descending order invariant
     assert(() {
       for (int i = 1; i < palms.length; i++) {
         if (palms[i].score > palms[i - 1].score) {
@@ -278,7 +275,6 @@ class HandDetector {
       return true;
     }());
 
-    // Limit detections (NMS guarantees highest-scored first)
     final limitedPalms =
         palms.length > maxDetections ? palms.sublist(0, maxDetections) : palms;
 
@@ -286,9 +282,6 @@ class HandDetector {
       return _palmsToHands(image, limitedPalms, []);
     }
 
-    // Stage 2: Crop, rotate, and extract landmarks
-
-    // Phase 1: Preprocess all detections (crop and rotate)
     final cropDataList = <_HandCropData>[];
     for (final palm in limitedPalms) {
       final cropped = ImageUtils.rotateAndCropRectangle(image, palm);
@@ -296,7 +289,6 @@ class HandDetector {
         continue;
       }
 
-      // Calculate pixel coordinates for later transformation
       final centerX = palm.sqnRrCenterX * image.cols;
       final centerY = palm.sqnRrCenterY * image.rows;
       final size = palm.sqnRrSize * math.max(image.cols, image.rows);
@@ -311,7 +303,6 @@ class HandDetector {
       ));
     }
 
-    // Phase 2: Run landmark extraction in parallel for all hands
     final futures = cropDataList.map((data) async {
       try {
         return await _lm.run(data.croppedHand);
@@ -322,10 +313,8 @@ class HandDetector {
 
     final allLandmarks = await Future.wait(futures);
 
-    // Phase 3: Post-process results and transform coordinates
     final results = await _buildResults(image, cropDataList, allLandmarks);
 
-    // Clean up crop data (dispose cv.Mat objects)
     for (final data in cropDataList) {
       data.dispose();
     }
@@ -344,7 +333,6 @@ class HandDetector {
     for (int i = 0; i < palms.length; i++) {
       final palm = palms[i];
 
-      // Calculate bounding box from rotation rectangle
       final centerX = palm.sqnRrCenterX * image.cols;
       final centerY = palm.sqnRrCenterY * image.rows;
       final size = palm.sqnRrSize * math.max(image.cols, image.rows);
@@ -392,25 +380,19 @@ class HandDetector {
       final data = cropDataList[i];
       final lms = allLandmarks[i];
 
-      // Skip if landmark extraction failed or score too low
       if (lms == null || lms.score < minLandmarkScore) continue;
 
-      // Transform landmarks from crop pixel space to original image space
       final transformedLandmarks = <HandLandmark>[];
       final cropW = data.croppedHand.cols.toDouble();
       final cropH = data.croppedHand.rows.toDouble();
 
-      // Precompute trig values once per hand (used for all 21 landmarks)
       final cosR = math.cos(data.rotation);
       final sinR = math.sin(data.rotation);
 
       for (final lm in lms.landmarks) {
-        // Landmarks are already in crop pixel space (after unpadding/rescaling)
-        // No need to multiply by cropW/cropH - they're already in pixels
         final xCrop = lm.x;
         final yCrop = lm.y;
 
-        // Apply inverse rotation to get original image coordinates
         final (xOrig, yOrig) = _transformToOriginal(
           xCrop,
           yCrop,
@@ -431,7 +413,6 @@ class HandDetector {
         ));
       }
 
-      // Run gesture recognition if enabled
       GestureResult? gesture;
       if (_gestureRecognizer != null && _gestureRecognizer!.isInitialized) {
         gesture = await _gestureRecognizer!.recognize(
@@ -443,7 +424,6 @@ class HandDetector {
         );
       }
 
-      // Calculate bounding box from rotation rectangle
       final halfSize = data.cropSize / 2;
 
       results.add(Hand(
@@ -489,17 +469,12 @@ class HandDetector {
     double centerX,
     double centerY,
   ) {
-    // Convert to relative position from crop center
     final xRel = xCrop - cropW / 2;
     final yRel = yCrop - cropH / 2;
 
-    // Apply inverse rotation R(-rotation) to undo the forward R(+rotation)
-    // R(-θ) = [cos(-θ), sin(-θ); -sin(-θ), cos(-θ)]
-    //       = [cos(θ), -sin(θ); sin(θ), cos(θ)]
     final xRot = xRel * cosR - yRel * sinR;
     final yRot = xRel * sinR + yRel * cosR;
 
-    // Translate to original image coordinates
     final xOrig = xRot + centerX;
     final yOrig = yRot + centerY;
 

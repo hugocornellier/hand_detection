@@ -1,3 +1,7 @@
+## 1.0.2
+
+* Refactor to use `flutter_litert` 1.1.0 shared utilities (`InterpreterFactory`, `InterpreterPool`, `PerformanceConfig`, `generateAnchors`)
+
 ## 1.0.1
 
 * Update `opencv_dart` 2.1.0 -> 2.2.1

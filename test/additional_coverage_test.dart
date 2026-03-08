@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:hand_detection/hand_detection.dart';
 import 'package:hand_detection/src/util/image_utils.dart';
@@ -63,7 +64,7 @@ void main() {
         fixedAnchorSize: true,
       );
 
-      final anchors = PalmDetector.generateAnchors(options);
+      final anchors = generateAnchors(options);
 
       // Layer 0 (stride=8): 24x24 = 576 anchors × 2 = 1152
       // Layer 1 (stride=16): 12x12 = 144 anchors × 2 = 288

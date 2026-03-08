@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter_litert/flutter_litert.dart';
 import '../types.dart';
@@ -44,20 +42,19 @@ class GestureRecognizer {
   /// Gestures below this threshold will return [GestureType.unknown].
   final double minConfidence;
 
-  // Pre-allocated input buffers for embedder
-  // Input 0: hand [1, 21, 3] - normalized landmarks
+  /// Hand landmarks input tensor [1, 21, 3].
   late List<List<List<double>>> _handInput;
-  // Input 1: handedness [1, 1]
+
+  /// Handedness input tensor [1, 1].
   late List<List<double>> _handednessInput;
-  // Input 2: world_hand [1, 21, 3] - world coordinates
+
+  /// World-space hand landmarks input tensor [1, 21, 3].
   late List<List<List<double>>> _worldHandInput;
 
-  // Pre-allocated output buffer for embedder
-  // Output: [1, 128] embedding
+  /// Embedder output tensor [1, 128].
   late List<List<double>> _embeddingOutput;
 
-  // Pre-allocated output buffer for classifier
-  // Output: [1, 8] gesture probabilities
+  /// Classifier output tensor [1, 8] (gesture probabilities).
   late List<List<double>> _gestureOutput;
 
   /// Creates a gesture recognizer with the specified minimum confidence threshold.
@@ -73,33 +70,28 @@ class GestureRecognizer {
   Future<void> initialize({PerformanceConfig? performanceConfig}) async {
     if (_isInitialized) await dispose();
 
-    // Load embedder model
     const embedderPath =
         'packages/hand_detection/assets/models/gesture_embedder.tflite';
-    final embedderOptions = _createInterpreterOptions(performanceConfig, true);
+    final (embedderOptions, embedderDelegate) =
+        InterpreterFactory.create(performanceConfig);
+    _embedderDelegate = embedderDelegate;
     _embedderInterpreter =
         await Interpreter.fromAsset(embedderPath, options: embedderOptions);
     _embedderInterpreter!.allocateTensors();
-    if (_embedderDelegate == null) {
-      _embedderIso = await IsolateInterpreter.create(
-          address: _embedderInterpreter!.address);
-    }
+    _embedderIso = await InterpreterFactory.createIsolateIfNeeded(
+        _embedderInterpreter!, _embedderDelegate);
 
-    // Load classifier model
     const classifierPath =
         'packages/hand_detection/assets/models/canned_gesture_classifier.tflite';
-    final classifierOptions =
-        _createInterpreterOptions(performanceConfig, false);
+    final (classifierOptions, classifierDelegate) =
+        InterpreterFactory.create(performanceConfig);
+    _classifierDelegate = classifierDelegate;
     _classifierInterpreter =
         await Interpreter.fromAsset(classifierPath, options: classifierOptions);
     _classifierInterpreter!.allocateTensors();
-    if (_classifierDelegate == null) {
-      _classifierIso = await IsolateInterpreter.create(
-          address: _classifierInterpreter!.address);
-    }
+    _classifierIso = await InterpreterFactory.createIsolateIfNeeded(
+        _classifierInterpreter!, _classifierDelegate);
 
-    // Pre-allocate input buffers for embedder
-    // hand: [1, 21, 3]
     _handInput = List.generate(
       1,
       (_) => List.generate(
@@ -110,14 +102,12 @@ class GestureRecognizer {
       growable: false,
     );
 
-    // handedness: [1, 1]
     _handednessInput = List.generate(
       1,
       (_) => List<double>.filled(1, 0.0, growable: false),
       growable: false,
     );
 
-    // world_hand: [1, 21, 3]
     _worldHandInput = List.generate(
       1,
       (_) => List.generate(
@@ -128,15 +118,12 @@ class GestureRecognizer {
       growable: false,
     );
 
-    // Pre-allocate output buffers
-    // Embedding: [1, 128]
     _embeddingOutput = List.generate(
       1,
       (_) => List<double>.filled(128, 0.0, growable: false),
       growable: false,
     );
 
-    // Gesture probabilities: [1, 8]
     _gestureOutput = List.generate(
       1,
       (_) => List<double>.filled(8, 0.0, growable: false),
@@ -157,28 +144,24 @@ class GestureRecognizer {
   }) async {
     if (_isInitialized) await dispose();
 
-    // Load embedder model
-    final embedderOptions = _createInterpreterOptions(performanceConfig, true);
+    final (embedderOptions, embedderDelegate) =
+        InterpreterFactory.create(performanceConfig);
+    _embedderDelegate = embedderDelegate;
     _embedderInterpreter =
         Interpreter.fromBuffer(embedderBytes, options: embedderOptions);
     _embedderInterpreter!.allocateTensors();
-    if (_embedderDelegate == null) {
-      _embedderIso = await IsolateInterpreter.create(
-          address: _embedderInterpreter!.address);
-    }
+    _embedderIso = await InterpreterFactory.createIsolateIfNeeded(
+        _embedderInterpreter!, _embedderDelegate);
 
-    // Load classifier model
-    final classifierOptions =
-        _createInterpreterOptions(performanceConfig, false);
+    final (classifierOptions, classifierDelegate) =
+        InterpreterFactory.create(performanceConfig);
+    _classifierDelegate = classifierDelegate;
     _classifierInterpreter =
         Interpreter.fromBuffer(classifierBytes, options: classifierOptions);
     _classifierInterpreter!.allocateTensors();
-    if (_classifierDelegate == null) {
-      _classifierIso = await IsolateInterpreter.create(
-          address: _classifierInterpreter!.address);
-    }
+    _classifierIso = await InterpreterFactory.createIsolateIfNeeded(
+        _classifierInterpreter!, _classifierDelegate);
 
-    // Pre-allocate input buffers for embedder
     _handInput = List.generate(
       1,
       (_) => List.generate(
@@ -218,39 +201,6 @@ class GestureRecognizer {
     );
 
     _isInitialized = true;
-  }
-
-  InterpreterOptions _createInterpreterOptions(
-      PerformanceConfig? config, bool isEmbedder) {
-    final options = InterpreterOptions();
-
-    if (config == null || config.mode == PerformanceMode.disabled) {
-      return options;
-    }
-
-    final threadCount = config.numThreads?.clamp(0, 8) ??
-        math.min(4, Platform.numberOfProcessors);
-
-    options.threads = threadCount;
-
-    if (config.mode == PerformanceMode.xnnpack ||
-        config.mode == PerformanceMode.auto) {
-      try {
-        final xnnpackDelegate = XNNPackDelegate(
-          options: XNNPackDelegateOptions(numThreads: threadCount),
-        );
-        options.addDelegate(xnnpackDelegate);
-        if (isEmbedder) {
-          _embedderDelegate = xnnpackDelegate;
-        } else {
-          _classifierDelegate = xnnpackDelegate;
-        }
-      } catch (_) {
-        // Fallback to CPU
-      }
-    }
-
-    return options;
   }
 
   /// Returns true if the recognizer has been initialized.
@@ -287,6 +237,8 @@ class GestureRecognizer {
   ///
   /// Returns a [GestureResult] containing the recognized gesture type and confidence.
   /// Returns [GestureType.unknown] if confidence is below [minConfidence].
+  /// The classifier outputs softmax probabilities directly, so no additional softmax is applied.
+  /// Model output order matches [GestureType] enum: Unknown, Closed_Fist, Open_Palm, Pointing_Up, Thumb_Down, Thumb_Up, Victory, ILoveYou.
   Future<GestureResult> recognize({
     required List<HandLandmark> landmarks,
     required List<HandLandmark> worldLandmarks,
@@ -303,29 +255,20 @@ class GestureRecognizer {
       return const GestureResult(type: GestureType.unknown, confidence: 0.0);
     }
 
-    // Prepare normalized hand landmarks [1, 21, 3]
-    // Normalize x, y, z to 0-1 range
-    // z represents depth relative to wrist, scaled roughly like x (by image width)
     for (int i = 0; i < 21; i++) {
       _handInput[0][i][0] = landmarks[i].x / imageWidth;
       _handInput[0][i][1] = landmarks[i].y / imageHeight;
       _handInput[0][i][2] = landmarks[i].z / imageWidth;
     }
 
-    // Prepare handedness [1, 1]
-    // MediaPipe convention: 0 = left, 1 = right
     _handednessInput[0][0] = (handedness == Handedness.right) ? 1.0 : 0.0;
 
-    // Prepare world landmarks [1, 21, 3]
-    // World landmarks are already in world coordinates, use as-is
     for (int i = 0; i < 21; i++) {
       _worldHandInput[0][i][0] = worldLandmarks[i].x;
       _worldHandInput[0][i][1] = worldLandmarks[i].y;
       _worldHandInput[0][i][2] = worldLandmarks[i].z;
     }
 
-    // Stage 1: Run embedder
-    // Inputs: hand (index 0), handedness (index 1), world_hand (index 2)
     if (_embedderIso != null) {
       await _embedderIso!.runForMultipleInputs(
         [_handInput, _handednessInput, _worldHandInput],
@@ -338,16 +281,12 @@ class GestureRecognizer {
       );
     }
 
-    // Stage 2: Run classifier
     if (_classifierIso != null) {
       await _classifierIso!.run(_embeddingOutput, _gestureOutput);
     } else {
       _classifierInterpreter!.run(_embeddingOutput, _gestureOutput);
     }
 
-    // Find the gesture with highest probability
-    // Note: The classifier already outputs softmax probabilities (sum to 1.0),
-    // so we use the raw output directly without applying softmax again.
     final probs = _gestureOutput[0];
     int maxIdx = 0;
     double maxProb = probs[0];
@@ -360,14 +299,10 @@ class GestureRecognizer {
 
     final confidence = maxProb;
 
-    // Return unknown if confidence is below threshold
     if (confidence < minConfidence) {
       return GestureResult(type: GestureType.unknown, confidence: confidence);
     }
 
-    // Map index to gesture type
-    // Model output order: Unknown, Closed_Fist, Open_Palm, Pointing_Up,
-    //                     Thumb_Down, Thumb_Up, Victory, ILoveYou
     final gestureType = GestureType.values[maxIdx];
 
     return GestureResult(type: gestureType, confidence: confidence);

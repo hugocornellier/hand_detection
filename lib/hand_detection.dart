@@ -2,9 +2,9 @@
 ///
 /// This library provides a Flutter plugin for real-time human hand detection
 /// using MediaPipe-style models. It detects hands in images and extracts
-/// 21 body landmarks (keypoints) for each detected hand.
+/// 21 hand landmarks (keypoints) for each detected hand.
 ///
-/// This is a port of a Python hand detection library that uses:
+/// Uses MediaPipe-style models for detection and landmark extraction:
 /// - SSD-based palm detection with 2016 anchors
 /// - MediaPipe hand landmark model (21 landmarks)
 /// - Rotation-aware cropping for hand alignment
@@ -52,6 +52,7 @@
 /// - [HandLandmarkType]: Enum of 21 hand landmarks (wrist, finger joints, tips)
 /// - [Handedness]: Left or right hand indication
 /// - [BoundingBox]: Axis-aligned rectangle for hand location
+/// - [PalmDetection]: Raw palm detection result with rotation rectangle data
 /// - [GestureType]: Recognized gesture (thumbUp, victory, closedFist, etc.)
 /// - [GestureResult]: Gesture type with confidence score
 ///

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:hand_detection/src/util/image_utils.dart';
 import 'package:hand_detection/src/models/palm_detector.dart';
@@ -384,7 +385,7 @@ void main() {
     test('reverses letterbox transformation', () {
       // Simulate a letterbox with ratio=2.0, dw=10, dh=20
       final xyxy = [30.0, 60.0, 130.0, 160.0];
-      final result = ImageUtils.scaleFromLetterbox(xyxy, 2.0, 10, 20);
+      final result = scaleFromLetterbox(xyxy, 2.0, 10, 20);
 
       // x1 = (30 - 10) / 2 = 10
       expect(result[0], closeTo(10.0, 0.001));
@@ -417,8 +418,7 @@ void main() {
       ];
 
       // Reverse transform
-      final recovered =
-          ImageUtils.scaleFromLetterbox(letterboxBox, ratio, dw, dh);
+      final recovered = scaleFromLetterbox(letterboxBox, ratio, dw, dh);
 
       expect(recovered[0], closeTo(originalBox[0], 0.5));
       expect(recovered[1], closeTo(originalBox[1], 0.5));
@@ -431,7 +431,7 @@ void main() {
 
     test('handles zero padding', () {
       final xyxy = [10.0, 20.0, 100.0, 200.0];
-      final result = ImageUtils.scaleFromLetterbox(xyxy, 1.0, 0, 0);
+      final result = scaleFromLetterbox(xyxy, 1.0, 0, 0);
 
       expect(result[0], 10.0);
       expect(result[1], 20.0);
@@ -441,7 +441,7 @@ void main() {
 
     test('handles ratio of 1.0', () {
       final xyxy = [15.0, 25.0, 115.0, 225.0];
-      final result = ImageUtils.scaleFromLetterbox(xyxy, 1.0, 5, 5);
+      final result = scaleFromLetterbox(xyxy, 1.0, 5, 5);
 
       expect(result[0], closeTo(10.0, 0.001));
       expect(result[1], closeTo(20.0, 0.001));
@@ -614,7 +614,7 @@ void main() {
     test('reshapes flat array to 4D', () {
       // 2x3x4x2 = 48 elements
       final flat = List<double>.generate(48, (i) => i.toDouble());
-      final result = ImageUtils.reshapeToTensor4D(flat, 2, 3, 4, 2);
+      final result = flat.reshape<double>([2, 3, 4, 2]);
 
       expect(result.length, 2);
       expect(result[0].length, 3);
@@ -634,7 +634,7 @@ void main() {
 
     test('reshapes 1x1x1x1', () {
       final flat = [42.0];
-      final result = ImageUtils.reshapeToTensor4D(flat, 1, 1, 1, 1);
+      final result = flat.reshape<double>([1, 1, 1, 1]);
 
       expect(result[0][0][0][0], 42.0);
     });
@@ -642,7 +642,7 @@ void main() {
     test('reshapes batch of images', () {
       // Simulate batch=2, h=2, w=2, c=3 = 24 elements
       final flat = List<double>.generate(24, (i) => i.toDouble());
-      final result = ImageUtils.reshapeToTensor4D(flat, 2, 2, 2, 3);
+      final result = flat.reshape<double>([2, 2, 2, 3]);
 
       expect(result.length, 2);
       expect(result[0][0][0], [0.0, 1.0, 2.0]);
@@ -654,7 +654,7 @@ void main() {
 
     test('values are in row-major order', () {
       final flat = List<double>.generate(12, (i) => i.toDouble());
-      final result = ImageUtils.reshapeToTensor4D(flat, 1, 2, 2, 3);
+      final result = flat.reshape<double>([1, 2, 2, 3]);
 
       int idx = 0;
       for (int i = 0; i < 1; i++) {

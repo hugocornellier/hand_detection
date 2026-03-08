@@ -24,9 +24,7 @@ Completely local: no remote API, just pure on-device, offline detection.
 - 21-point hand landmarks with **3D depth information** (x, y, z coordinates)
 - Handedness detection (left/right hand)
 - **Gesture recognition**: closed fist, open palm, pointing up, thumbs down, thumbs up, victory, I love you
-- All coordinates are in absolute pixel coordinates
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
-- Native OpenCV preprocessing (resize/letterbox/crops) for optimized throughput
 - The [example](https://pub.dev/packages/hand_detection/example) app illustrates how to detect and render results on images
 
 ## Quick Start
@@ -75,7 +73,7 @@ For live camera streams, you can bypass image encoding/decoding entirely by usin
 ```dart
 import 'package:hand_detection/hand_detection.dart';
 
-Future<void> processFrame(cv.Mat frame) async {
+Future<void> processFrame(Mat frame) async {
   final detector = HandDetector();
   await detector.initialize();
 
@@ -258,11 +256,11 @@ The `HandDetector` constructor accepts several configuration options:
 final detector = HandDetector(
   mode: HandMode.boxesAndLandmarks,      // Detection mode
   landmarkModel: HandLandmarkModel.full, // Landmark model variant
-  detectorConf: 0.6,                     // Palm detection confidence (0.0-1.0)
+  detectorConf: 0.45,                     // Palm detection confidence (0.0-1.0)
   maxDetections: 10,                     // Maximum hands to detect
   minLandmarkScore: 0.5,                 // Minimum landmark confidence (0.0-1.0)
   interpreterPoolSize: 1,                // TFLite interpreter pool size
-  performanceConfig: PerformanceConfig.xnnpack(), // Performance optimization
+  performanceConfig: PerformanceConfig.disabled,   // Performance optimization (default: disabled)
   enableGestures: false,                 // Enable gesture recognition
   gestureMinConfidence: 0.5,             // Minimum gesture confidence (0.0-1.0)
 );
@@ -286,8 +284,8 @@ CameraController camera = CameraController(cameras.first, ResolutionPreset.mediu
 await camera.initialize();
 
 camera.startImageStream((CameraImage image) async {
-  // Convert CameraImage (YUV420) directly to cv.Mat (BGR)
-  final cv.Mat mat = convertCameraImageToMat(image); // see example app
+  // Convert CameraImage (YUV420) directly to Mat (BGR)
+  final Mat mat = convertCameraImageToMat(image); // see example app
 
   // Detect hands using Mat for maximum performance
   List<Hand> hands = await detector.detectOnMat(mat);

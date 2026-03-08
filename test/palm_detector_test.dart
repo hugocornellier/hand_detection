@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:hand_detection/src/models/palm_detector.dart';
 
@@ -75,7 +76,7 @@ void main() {
         fixedAnchorSize: true,
       );
 
-      final anchors = PalmDetector.generateAnchors(options);
+      final anchors = generateAnchors(options);
       expect(anchors.length, 2016);
     });
 
@@ -95,7 +96,7 @@ void main() {
         fixedAnchorSize: true,
       );
 
-      final anchors = PalmDetector.generateAnchors(options);
+      final anchors = generateAnchors(options);
       for (final anchor in anchors) {
         expect(anchor.length, 4);
       }
@@ -117,7 +118,7 @@ void main() {
         fixedAnchorSize: true,
       );
 
-      final anchors = PalmDetector.generateAnchors(options);
+      final anchors = generateAnchors(options);
       for (final anchor in anchors) {
         expect(anchor[2], 1.0); // w
         expect(anchor[3], 1.0); // h
@@ -140,7 +141,7 @@ void main() {
         fixedAnchorSize: false,
       );
 
-      final anchors = PalmDetector.generateAnchors(options);
+      final anchors = generateAnchors(options);
       // With non-fixed, some anchors should have w,h != 1.0
       final hasNonUnit = anchors.any((a) => a[2] != 1.0 || a[3] != 1.0);
       expect(hasNonUnit, true);
@@ -162,7 +163,7 @@ void main() {
         fixedAnchorSize: true,
       );
 
-      final anchors = PalmDetector.generateAnchors(options);
+      final anchors = generateAnchors(options);
       for (final anchor in anchors) {
         expect(anchor[0], greaterThanOrEqualTo(0.0)); // cx
         expect(anchor[0], lessThanOrEqualTo(1.0));
@@ -202,8 +203,8 @@ void main() {
         fixedAnchorSize: true,
       );
 
-      final reducedAnchors = PalmDetector.generateAnchors(optionsReduced);
-      final normalAnchors = PalmDetector.generateAnchors(optionsNormal);
+      final reducedAnchors = generateAnchors(optionsReduced);
+      final normalAnchors = generateAnchors(optionsNormal);
 
       // With reduced boxes in lowest layer, layer 0 gets 3 aspect ratios
       // instead of the normal pattern, so counts differ
@@ -241,8 +242,8 @@ void main() {
         fixedAnchorSize: true,
       );
 
-      final withInterp = PalmDetector.generateAnchors(optionsWithInterp);
-      final noInterp = PalmDetector.generateAnchors(optionsNoInterp);
+      final withInterp = generateAnchors(optionsWithInterp);
+      final noInterp = generateAnchors(optionsNoInterp);
 
       // Without interpolation, fewer anchors per position
       expect(noInterp.length, lessThan(withInterp.length));
@@ -264,7 +265,7 @@ void main() {
         fixedAnchorSize: true,
       );
 
-      final anchors = PalmDetector.generateAnchors(options);
+      final anchors = generateAnchors(options);
       // 128/8 = 16x16 = 256 positions, 1 anchor each
       expect(anchors.length, 256);
     });
@@ -285,7 +286,7 @@ void main() {
         fixedAnchorSize: true,
       );
 
-      final anchors = PalmDetector.generateAnchors(options);
+      final anchors = generateAnchors(options);
       // 64/8 = 8x8 = 64 positions, 3 anchors each
       expect(anchors.length, 64 * 3);
     });

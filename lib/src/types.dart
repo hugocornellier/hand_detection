@@ -1,3 +1,6 @@
+export 'package:flutter_litert/flutter_litert.dart'
+    show PerformanceMode, PerformanceConfig;
+
 /// Hand landmark model variant for landmark extraction.
 ///
 /// Only the full model is available to match the Python implementation.
@@ -16,109 +19,6 @@ enum HandMode {
 
   /// Full pipeline mode returning bounding boxes and landmarks per hand.
   boxesAndLandmarks,
-}
-
-/// Performance optimization mode for TensorFlow Lite inference.
-///
-/// Controls CPU/GPU acceleration via TensorFlow Lite delegates.
-enum PerformanceMode {
-  /// No delegates - uses default TFLite CPU implementation.
-  ///
-  /// - Most compatible across all devices
-  /// - Slowest performance
-  /// - Lowest memory usage
-  /// - Use for maximum compatibility or debugging
-  disabled,
-
-  /// XNNPACK delegate for CPU optimization.
-  ///
-  /// - Works on all platforms (iOS, Android, macOS, Linux, Windows)
-  /// - 2-5x faster than disabled mode
-  /// - Minimal memory overhead (+2-3MB per interpreter)
-  /// - Recommended default for most use cases
-  ///
-  /// Uses SIMD vectorization (NEON on ARM, AVX on x86) and multi-threading.
-  xnnpack,
-
-  /// Automatically choose best delegate for current platform.
-  ///
-  /// Current behavior:
-  /// - All platforms: Uses XNNPACK with platform-optimal thread count
-  ///
-  /// Future: May use GPU/Metal delegates when available.
-  auto,
-}
-
-/// Configuration for TensorFlow Lite interpreter performance.
-///
-/// Controls delegate usage and threading for CPU/GPU acceleration.
-///
-/// Example:
-/// ```dart
-/// // Default (no acceleration)
-/// final detector = HandDetector();
-///
-/// // XNNPACK with auto thread detection (recommended)
-/// final detector = HandDetector(
-///   performanceConfig: PerformanceConfig.xnnpack(),
-/// );
-///
-/// // XNNPACK with custom threads
-/// final detector = HandDetector(
-///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
-/// );
-/// ```
-class PerformanceConfig {
-  /// Performance mode controlling delegate selection.
-  final PerformanceMode mode;
-
-  /// Number of threads for XNNPACK delegate.
-  ///
-  /// - null: Auto-detect optimal count (min(4, Platform.numberOfProcessors))
-  /// - 0: No thread pool (single-threaded, good for tiny models)
-  /// - 1-8: Explicit thread count
-  ///
-  /// Diminishing returns after 4 threads for typical models.
-  /// Only applies when mode is [PerformanceMode.xnnpack] or [PerformanceMode.auto].
-  final int? numThreads;
-
-  /// Creates a performance configuration.
-  ///
-  /// Parameters:
-  /// - [mode]: Performance mode. Default: [PerformanceMode.disabled]
-  /// - [numThreads]: Number of threads (null for auto-detection)
-  const PerformanceConfig({
-    this.mode = PerformanceMode.disabled,
-    this.numThreads,
-  });
-
-  /// Creates config with XNNPACK enabled and auto thread detection.
-  const PerformanceConfig.xnnpack({this.numThreads})
-      : mode = PerformanceMode.xnnpack;
-
-  /// Creates config with auto mode (currently uses XNNPACK).
-  const PerformanceConfig.auto({this.numThreads}) : mode = PerformanceMode.auto;
-
-  /// Default configuration (no delegates, backward compatible).
-  static const PerformanceConfig disabled = PerformanceConfig(
-    mode: PerformanceMode.disabled,
-  );
-
-  /// Gets the effective number of threads to use.
-  ///
-  /// Returns null if mode is disabled.
-  int? getEffectiveThreadCount() {
-    if (mode == PerformanceMode.disabled) return null;
-
-    if (numThreads != null) {
-      return numThreads!.clamp(0, 8);
-    }
-
-    // Auto-detect: Cap at 4 for diminishing returns
-    // Using a constant here since we can't access Platform in this file
-    // The actual Platform.numberOfProcessors will be used in the delegate creation
-    return null; // Signal auto-detection
-  }
 }
 
 /// Recognized hand gesture types from MediaPipe gesture classifier.
@@ -466,32 +366,26 @@ class BoundingBox {
 /// }
 /// ```
 const List<List<HandLandmarkType>> handLandmarkConnections = [
-  // Thumb: wrist → CMC → MCP → IP → tip
   [HandLandmarkType.wrist, HandLandmarkType.thumbCMC],
   [HandLandmarkType.thumbCMC, HandLandmarkType.thumbMCP],
   [HandLandmarkType.thumbMCP, HandLandmarkType.thumbIP],
   [HandLandmarkType.thumbIP, HandLandmarkType.thumbTip],
-  // Index finger: wrist → MCP → PIP → DIP → tip
   [HandLandmarkType.wrist, HandLandmarkType.indexFingerMCP],
   [HandLandmarkType.indexFingerMCP, HandLandmarkType.indexFingerPIP],
   [HandLandmarkType.indexFingerPIP, HandLandmarkType.indexFingerDIP],
   [HandLandmarkType.indexFingerDIP, HandLandmarkType.indexFingerTip],
-  // Middle finger: MCP → PIP → DIP → tip (connects from index MCP)
   [HandLandmarkType.indexFingerMCP, HandLandmarkType.middleFingerMCP],
   [HandLandmarkType.middleFingerMCP, HandLandmarkType.middleFingerPIP],
   [HandLandmarkType.middleFingerPIP, HandLandmarkType.middleFingerDIP],
   [HandLandmarkType.middleFingerDIP, HandLandmarkType.middleFingerTip],
-  // Ring finger: MCP → PIP → DIP → tip (connects from middle MCP)
   [HandLandmarkType.middleFingerMCP, HandLandmarkType.ringFingerMCP],
   [HandLandmarkType.ringFingerMCP, HandLandmarkType.ringFingerPIP],
   [HandLandmarkType.ringFingerPIP, HandLandmarkType.ringFingerDIP],
   [HandLandmarkType.ringFingerDIP, HandLandmarkType.ringFingerTip],
-  // Pinky finger: MCP → PIP → DIP → tip (connects from ring MCP)
   [HandLandmarkType.ringFingerMCP, HandLandmarkType.pinkyMCP],
   [HandLandmarkType.pinkyMCP, HandLandmarkType.pinkyPIP],
   [HandLandmarkType.pinkyPIP, HandLandmarkType.pinkyDIP],
   [HandLandmarkType.pinkyDIP, HandLandmarkType.pinkyTip],
-  // Wrist to pinky base (palm edge)
   [HandLandmarkType.wrist, HandLandmarkType.pinkyMCP],
 ];
 

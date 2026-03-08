@@ -1,70 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:meta/meta.dart';
 import 'package:flutter_litert/flutter_litert.dart';
 import '../util/image_utils.dart';
-import '../types.dart';
-
-/// SSD Anchor configuration options for palm detection.
-///
-/// Mirrors the Python SSDAnchorOptions namedtuple. Used internally for
-/// generating anchor boxes in the SSD-style palm detection model.
-class SSDAnchorOptions {
-  /// Number of feature map layers (typically 4 for palm detection).
-  final int numLayers;
-
-  /// Minimum anchor scale (0.0-1.0).
-  final double minScale;
-
-  /// Maximum anchor scale (0.0-1.0).
-  final double maxScale;
-
-  /// Input image height in pixels.
-  final int inputSizeHeight;
-
-  /// Input image width in pixels.
-  final int inputSizeWidth;
-
-  /// X offset for anchor centers (typically 0.5).
-  final double anchorOffsetX;
-
-  /// Y offset for anchor centers (typically 0.5).
-  final double anchorOffsetY;
-
-  /// Feature map strides for each layer.
-  final List<int> strides;
-
-  /// Aspect ratios for anchor boxes.
-  final List<double> aspectRatios;
-
-  /// Whether to reduce boxes in the lowest layer.
-  final bool reduceBoxesInLowestLayer;
-
-  /// Interpolated scale aspect ratio (0 to disable).
-  final double interpolatedScaleAspectRatio;
-
-  /// Whether to use fixed anchor size (1x1).
-  final bool fixedAnchorSize;
-
-  /// Creates SSD anchor options.
-  const SSDAnchorOptions({
-    required this.numLayers,
-    required this.minScale,
-    required this.maxScale,
-    required this.inputSizeHeight,
-    required this.inputSizeWidth,
-    required this.anchorOffsetX,
-    required this.anchorOffsetY,
-    required this.strides,
-    required this.aspectRatios,
-    required this.reduceBoxesInLowestLayer,
-    required this.interpolatedScaleAspectRatio,
-    required this.fixedAnchorSize,
-  });
-}
 
 /// A detected palm with rotation rectangle parameters.
 ///
@@ -132,113 +72,26 @@ class PalmDetector {
   int _imageHeight = 0;
   int _imageWidth = 0;
 
-  /// square_standard_size = max(image_height, image_width) - Python palm_detection.py line 299
+  /// square_standard_size = max(image_height, image_width)
   int _squareStandardSize = 0;
 
-  /// square_padding_half_size = abs(image_height - image_width) // 2 - Python palm_detection.py line 300
+  /// square_padding_half_size = abs(image_height - image_width) // 2
   int _squarePaddingHalfSize = 0;
 
   /// Score threshold for detection filtering.
   final double scoreThreshold;
 
-  /// Pre-allocated buffers.
+  /// Pre-allocated input buffer.
   Float32List? _inputBuffer;
-  List<List<List<double>>>? _outputBoxes; // [1, 2016, 18]
-  List<List<List<double>>>? _outputScores; // [1, 2016, 1]
+
+  /// Pre-allocated box regressor output [1, 2016, 18].
+  List<List<List<double>>>? _outputBoxes;
+
+  /// Pre-allocated classification score output [1, 2016, 1].
+  List<List<List<double>>>? _outputScores;
 
   /// Creates a palm detector with the specified score threshold.
   PalmDetector({this.scoreThreshold = 0.45});
-
-  /// Calculates scale for anchor generation.
-  static double _calculateScale(
-      double minScale, double maxScale, int strideIndex, int numStrides) {
-    if (numStrides == 1) {
-      return (minScale + maxScale) / 2;
-    } else {
-      return minScale + (maxScale - minScale) * strideIndex / (numStrides - 1);
-    }
-  }
-
-  /// Generates SSD anchors based on the given options.
-  ///
-  /// This is a direct port of the Python generate_anchors function.
-  static List<List<double>> generateAnchors(SSDAnchorOptions options) {
-    final anchors = <List<double>>[];
-    int layerId = 0;
-    final nStrides = options.strides.length;
-
-    while (layerId < nStrides) {
-      final anchorHeight = <double>[];
-      final anchorWidth = <double>[];
-      final aspectRatios = <double>[];
-      final scales = <double>[];
-      int lastSameStrideLayer = layerId;
-
-      while (lastSameStrideLayer < nStrides &&
-          options.strides[lastSameStrideLayer] == options.strides[layerId]) {
-        final scale = _calculateScale(
-            options.minScale, options.maxScale, lastSameStrideLayer, nStrides);
-
-        if (lastSameStrideLayer == 0 && options.reduceBoxesInLowestLayer) {
-          aspectRatios.addAll([1.0, 2.0, 0.5]);
-          scales.addAll([0.1, scale, scale]);
-        } else {
-          aspectRatios.addAll(options.aspectRatios);
-          for (int i = 0; i < options.aspectRatios.length; i++) {
-            scales.add(scale);
-          }
-          if (options.interpolatedScaleAspectRatio > 0) {
-            double scaleNext;
-            if (lastSameStrideLayer == nStrides - 1) {
-              scaleNext = 1.0;
-            } else {
-              scaleNext = _calculateScale(options.minScale, options.maxScale,
-                  lastSameStrideLayer + 1, nStrides);
-            }
-            scales.add(math.sqrt(scale * scaleNext));
-            aspectRatios.add(options.interpolatedScaleAspectRatio);
-          }
-        }
-        lastSameStrideLayer++;
-      }
-
-      for (int i = 0; i < aspectRatios.length; i++) {
-        final ratioSqrt = math.sqrt(aspectRatios[i]);
-        anchorHeight.add(scales[i] / ratioSqrt);
-        anchorWidth.add(scales[i] * ratioSqrt);
-      }
-
-      final stride = options.strides[layerId];
-      final featureMapHeight = (options.inputSizeHeight / stride).ceil();
-      final featureMapWidth = (options.inputSizeWidth / stride).ceil();
-
-      for (int y = 0; y < featureMapHeight; y++) {
-        for (int x = 0; x < featureMapWidth; x++) {
-          for (int anchorId = 0; anchorId < anchorHeight.length; anchorId++) {
-            final xCenter = (x + options.anchorOffsetX) / featureMapWidth;
-            final yCenter = (y + options.anchorOffsetY) / featureMapHeight;
-
-            List<double> newAnchor;
-            if (options.fixedAnchorSize) {
-              newAnchor = [xCenter, yCenter, 1.0, 1.0];
-            } else {
-              newAnchor = [
-                xCenter,
-                yCenter,
-                anchorWidth[anchorId],
-                anchorHeight[anchorId]
-              ];
-            }
-            anchors.add(newAnchor);
-          }
-        }
-      }
-
-      layerId = lastSameStrideLayer;
-    }
-
-    return anchors;
-  }
 
   /// Normalizes angle to range [-pi, pi].
   static double normalizeRadians(double angle) {
@@ -252,19 +105,18 @@ class PalmDetector {
 
     if (_isInitialized) await dispose();
 
-    final options = _createInterpreterOptions(performanceConfig);
+    final (options, delegate) = InterpreterFactory.create(performanceConfig);
+    _delegate = delegate;
     final interpreter =
         await Interpreter.fromAsset(assetPath, options: options);
     _interpreter = interpreter;
     interpreter.allocateTensors();
 
-    // Get input shape
     final inTensor = interpreter.getInputTensor(0);
     final inShape = inTensor.shape;
-    _inH = inShape[1]; // Should be 192
-    _inW = inShape[2]; // Should be 192
+    _inH = inShape[1];
+    _inW = inShape[2];
 
-    // Generate anchors for palm detection
     final anchorOptions = SSDAnchorOptions(
       numLayers: 4,
       minScale: 0.1484375,
@@ -281,9 +133,6 @@ class PalmDetector {
     );
     _anchors = generateAnchors(anchorOptions);
 
-    // Pre-allocate output buffers
-    // Output 0: [1, 2016, 18] - box regressors
-    // Output 1: [1, 2016, 1] - classification scores
     final numAnchors = _anchors.length;
     _outputBoxes = List.generate(
       1,
@@ -304,9 +153,8 @@ class PalmDetector {
       growable: false,
     );
 
-    if (_delegate == null) {
-      _iso = await IsolateInterpreter.create(address: interpreter.address);
-    }
+    _iso =
+        await InterpreterFactory.createIsolateIfNeeded(interpreter, _delegate);
     _isInitialized = true;
   }
 
@@ -320,18 +168,17 @@ class PalmDetector {
   }) async {
     if (_isInitialized) await dispose();
 
-    final options = _createInterpreterOptions(performanceConfig);
+    final (options, delegate) = InterpreterFactory.create(performanceConfig);
+    _delegate = delegate;
     final interpreter = Interpreter.fromBuffer(modelBytes, options: options);
     _interpreter = interpreter;
     interpreter.allocateTensors();
 
-    // Get input shape
     final inTensor = interpreter.getInputTensor(0);
     final inShape = inTensor.shape;
     _inH = inShape[1];
     _inW = inShape[2];
 
-    // Generate anchors for palm detection
     final anchorOptions = SSDAnchorOptions(
       numLayers: 4,
       minScale: 0.1484375,
@@ -348,7 +195,6 @@ class PalmDetector {
     );
     _anchors = generateAnchors(anchorOptions);
 
-    // Pre-allocate output buffers
     final numAnchors = _anchors.length;
     _outputBoxes = List.generate(
       1,
@@ -369,41 +215,9 @@ class PalmDetector {
       growable: false,
     );
 
-    if (_delegate == null) {
-      _iso = await IsolateInterpreter.create(address: interpreter.address);
-    }
+    _iso =
+        await InterpreterFactory.createIsolateIfNeeded(interpreter, _delegate);
     _isInitialized = true;
-  }
-
-  InterpreterOptions _createInterpreterOptions(PerformanceConfig? config) {
-    final options = InterpreterOptions();
-
-    _delegate?.delete();
-    _delegate = null;
-
-    if (config == null || config.mode == PerformanceMode.disabled) {
-      return options;
-    }
-
-    final threadCount = config.numThreads?.clamp(0, 8) ??
-        math.min(4, Platform.numberOfProcessors);
-
-    options.threads = threadCount;
-
-    if (config.mode == PerformanceMode.xnnpack ||
-        config.mode == PerformanceMode.auto) {
-      try {
-        final xnnpackDelegate = XNNPackDelegate(
-          options: XNNPackDelegateOptions(numThreads: threadCount),
-        );
-        options.addDelegate(xnnpackDelegate);
-        _delegate = xnnpackDelegate;
-      } catch (e) {
-        // Fallback to CPU
-      }
-    }
-
-    return options;
   }
 
   /// Returns true if the detector has been initialized.
@@ -435,30 +249,22 @@ class PalmDetector {
     _imageHeight = image.rows;
     _imageWidth = image.cols;
 
-    // Calculate square padding info from original image dimensions (matches Python exactly)
-    // Python palm_detection.py lines 299-300:
-    // self.square_standard_size = max(image_height, image_width)
-    // self.square_padding_half_size = abs(image_height - image_width) // 2
     _squareStandardSize = math.max(_imageHeight, _imageWidth);
     _squarePaddingHalfSize = (_imageHeight - _imageWidth).abs() ~/ 2;
 
-    // Use keep_aspect_resize_and_pad to match Python implementation
     final (paddedImage, resizedImage) = ImageUtils.keepAspectResizeAndPad(
       image,
       _inW,
       _inH,
     );
 
-    // Convert to float32 tensor and normalize (BGR -> RGB)
     final inputSize = _inH * _inW * 3;
     _inputBuffer ??= Float32List(inputSize);
     ImageUtils.matToFloat32Tensor(paddedImage, buffer: _inputBuffer);
 
-    // Clean up OpenCV Mats
     resizedImage.dispose();
     paddedImage.dispose();
 
-    // Run inference
     final inputs = [_inputBuffer!.buffer];
     final outputs = <int, Object>{
       0: _outputBoxes!,
@@ -471,13 +277,11 @@ class PalmDetector {
       _interpreter!.runForMultipleInputs(inputs, outputs);
     }
 
-    // Decode boxes
     final decodedBoxes = _decodeBoxes(
       _outputBoxes![0],
       _outputScores![0],
     );
 
-    // Postprocess
     return _postprocess(decodedBoxes);
   }
 
@@ -487,6 +291,7 @@ class PalmDetector {
   ///
   /// Optimization: Only decodes the 4 coordinate pairs actually used (indices 0-5, 8-9)
   /// instead of all 9 pairs (18 values), avoiding intermediate list allocation.
+  /// Raw box layout: [cx, cy, w, h, kp0_x, kp0_y, kp1_x, kp1_y, kp2_x, kp2_y, ...] where each value is offset relative to anchor, scaled by 192.
   List<List<double>> _decodeBoxes(
     List<List<double>> rawBoxes,
     List<List<double>> rawScores, {
@@ -496,7 +301,6 @@ class PalmDetector {
     final invScale = 1.0 / scale;
 
     for (int i = 0; i < rawBoxes.length; i++) {
-      // Apply sigmoid to score
       final rawScore = rawScores[i][0];
       final score = 1.0 / (1.0 + math.exp(-rawScore));
 
@@ -505,30 +309,23 @@ class PalmDetector {
       final rawBox = rawBoxes[i];
       final anchor = _anchors[i];
 
-      // Decode only the coordinates we need (avoiding intermediate list)
-      // rawBox layout: [cx, cy, w, h, kp0_x, kp0_y, kp1_x, kp1_y, kp2_x, kp2_y, ...]
-      // Each value is offset relative to anchor, scaled by 192
       final anchorW = anchor[2];
       final anchorH = anchor[3];
       final anchorX = anchor[0];
       final anchorY = anchor[1];
 
-      // Center point (rawBox indices 0,1)
       final cx = rawBox[0] * anchorW * invScale + anchorX;
       final cy = rawBox[1] * anchorH * invScale + anchorY;
 
-      // Box size point (rawBox indices 2,3) - used to compute w,h
       final wPoint = rawBox[2] * anchorW * invScale + anchorX;
       final hPoint = rawBox[3] * anchorH * invScale + anchorY;
       final w = wPoint - anchorX;
       final h = hPoint - anchorY;
       final boxSize = math.max(w, h);
 
-      // Keypoint 0 (rawBox indices 4,5) - used for rotation calculation
       final kp0X = rawBox[4] * anchorW * invScale + anchorX;
       final kp0Y = rawBox[5] * anchorH * invScale + anchorY;
 
-      // Keypoint 2 (rawBox indices 8,9) - used for rotation calculation
       final kp2X = rawBox[8] * anchorW * invScale + anchorX;
       final kp2Y = rawBox[9] * anchorH * invScale + anchorY;
 
@@ -567,19 +364,11 @@ class PalmDetector {
         var sqnRrCenterX = boxX + 0.5 * boxSize * math.sin(rotation);
         var sqnRrCenterY = boxY - 0.5 * boxSize * math.cos(rotation);
 
-        // Adjust coordinates based on padding applied during preprocessing
-        // Match Python palm_detection.py lines 368-371 exactly:
-        // if image_height > image_width:
-        //     sqn_rr_center_x = (sqn_rr_center_x * square_standard_size - square_padding_half_size) / image_width
-        // else:
-        //     sqn_rr_center_y = (sqn_rr_center_y * square_standard_size - square_padding_half_size) / image_height
         if (_imageHeight > _imageWidth) {
-          // Portrait: padding was added to width, adjust X
           sqnRrCenterX =
               (sqnRrCenterX * _squareStandardSize - _squarePaddingHalfSize) /
                   _imageWidth;
         } else {
-          // Landscape: padding was added to height, adjust Y
           sqnRrCenterY =
               (sqnRrCenterY * _squareStandardSize - _squarePaddingHalfSize) /
                   _imageHeight;
@@ -595,7 +384,6 @@ class PalmDetector {
       }
     }
 
-    // Apply NMS to remove overlapping detections
     return _nms(palms);
   }
 
@@ -610,11 +398,9 @@ class PalmDetector {
       {double iouThreshold = 0.45}) {
     if (palms.isEmpty) return palms;
 
-    // Sort by score descending
     final sorted = List<PalmDetection>.from(palms)
       ..sort((a, b) => b.score.compareTo(a.score));
 
-    // Precompute AABBs once - O(n) instead of O(n²) conversions
     final aabbs = List<_AABB>.generate(
       sorted.length,
       (i) => _palmToAABB(sorted[i]),
@@ -657,20 +443,17 @@ class PalmDetector {
 
   /// Calculates Intersection over Union for two precomputed AABBs.
   double _calculateIoUFromAABB(_AABB a, _AABB b) {
-    // Calculate intersection rectangle
     final interLeft = math.max(a.left, b.left);
     final interRight = math.min(a.right, b.right);
     final interTop = math.max(a.top, b.top);
     final interBottom = math.min(a.bottom, b.bottom);
 
-    // No intersection if boxes don't overlap
     if (interRight <= interLeft || interBottom <= interTop) {
       return 0.0;
     }
 
     final interArea = (interRight - interLeft) * (interBottom - interTop);
 
-    // Calculate union area
     final aArea = (a.right - a.left) * (a.bottom - a.top);
     final bArea = (b.right - b.left) * (b.bottom - b.top);
     final unionArea = aArea + bArea - interArea;
