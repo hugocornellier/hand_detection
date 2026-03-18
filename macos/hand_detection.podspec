@@ -11,7 +11,8 @@ Pod::Spec.new do |s|
   s.platform              = :osx, '11.0'
   s.swift_version         = '5.0'
 
-  s.source_files          = 'hand_detection/Sources/hand_detection/**/*'
+  s.source_files          = 'hand_detection/Sources/hand_detection/**/*.{swift,h,m}'
+  s.resource_bundles      = { 'hand_detection_privacy' => ['hand_detection/Sources/hand_detection/PrivacyInfo.xcprivacy'] }
 
   s.dependency            'FlutterMacOS'
   s.static_framework      = true
