@@ -88,6 +88,10 @@ class HandDetector {
   final int interpreterPoolSize;
 
   /// Performance configuration for TensorFlow Lite inference.
+  ///
+  /// By default, auto mode selects the optimal delegate per platform:
+  /// - iOS: Metal GPU delegate
+  /// - Android/macOS/Linux/Windows: XNNPACK (2-5x SIMD acceleration)
   final PerformanceConfig performanceConfig;
 
   /// Whether to run gesture recognition on detected hands.
@@ -110,7 +114,7 @@ class HandDetector {
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
   /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1.
   ///   Forced to 1 when a performance delegate (XNNPACK/auto) is enabled.
-  /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: no acceleration
+  /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: auto (optimal per platform)
   /// - [enableGestures]: Whether to run gesture recognition. Default: false
   /// - [gestureMinConfidence]: Minimum confidence for gesture recognition (0.0-1.0). Default: 0.5
   HandDetector({
@@ -120,7 +124,7 @@ class HandDetector {
     this.maxDetections = 10,
     this.minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
-    this.performanceConfig = PerformanceConfig.disabled,
+    this.performanceConfig = const PerformanceConfig(),
     this.enableGestures = false,
     this.gestureMinConfidence = 0.5,
   }) : interpreterPoolSize = performanceConfig.mode == PerformanceMode.disabled
