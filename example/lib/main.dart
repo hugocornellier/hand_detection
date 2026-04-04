@@ -976,7 +976,7 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
 
-      // Downscale for performance — the palm detection model internally
+      // Downscale for performance, the palm detection model internally
       // resizes to 192×192, so full-res frames just waste IPC bandwidth.
       const int maxDim = 640;
       if (mat.cols > maxDim || mat.rows > maxDim) {

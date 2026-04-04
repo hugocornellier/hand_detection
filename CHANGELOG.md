@@ -1,3 +1,7 @@
+## 2.0.6
+
+* Update flutter_litert 2.0.10 -> 2.0.11
+
 ## 2.0.5
 
 * Update documentation
@@ -51,10 +55,10 @@ First stable release of `hand_detection`
 
 ### Pipeline
 
-* **Palm detection** — SSD model with rotation-aware bounding boxes
-* **Hand landmarks** — 21-point 3D landmarks with visibility scores
-* **Gesture recognition** — 7 gestures (fist, open palm, pointing up, thumbs down/up, victory, I love you)
-* **Handedness** — Left/right classification
+* **Palm detection**, SSD model with rotation-aware bounding boxes
+* **Hand landmarks**, 21-point 3D landmarks with visibility scores
+* **Gesture recognition**, 7 gestures (fist, open palm, pointing up, thumbs down/up, victory, I love you)
+* **Handedness**, Left/right classification
 
 ### Features
 

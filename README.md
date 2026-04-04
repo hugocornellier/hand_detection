@@ -69,12 +69,12 @@ The package automatically selects the best acceleration strategy for each platfo
 | **Android** | XNNPACK | 2-5x | ARM NEON SIMD acceleration |
 | **Windows** | XNNPACK | 2-5x | SIMD vectorization (AVX on x86) |
 
-No configuration needed - just call `initialize()` and you get the optimal performance for your platform.
+No configuration needed, just call `initialize()` and you get the optimal performance for your platform.
 
 ### Advanced Performance Configuration
 
 ```dart
-// Auto mode (default) - optimal for each platform
+// Auto mode (default), optimal for each platform
 await detector.initialize();
 
 // Force XNNPACK (all native platforms)
@@ -107,7 +107,7 @@ Future<void> processFrame(Mat frame) async {
   final detector = HandDetector();
   await detector.initialize();
 
-  // Direct Mat input - fastest for video streams
+  // Direct Mat input, fastest for video streams
   final hands = await detector.detectOnMat(frame);
 
   frame.dispose(); // always dispose Mats after use
@@ -352,7 +352,7 @@ final detector = await HandDetectorIsolate.spawn(
   enableGestures: true,
 );
 
-// All detection runs in background isolate - UI never blocked
+// All detection runs in background isolate, UI never blocked
 final hands = await detector.detectHands(imageBytes);
 
 for (final hand in hands) {
