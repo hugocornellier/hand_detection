@@ -10,12 +10,16 @@ import '../types.dart';
 ///
 /// Avoids GC pressure by reusing the same buffers across invocations.
 /// Each [InterpreterPool] slot has its own [_HandBuffers] instance.
+///
+/// Outputs are stored as flat [Float32List]s and passed to TFLite as their
+/// underlying [ByteBuffer], which avoids the boxed-double allocation that
+/// `Tensor.copyTo` performs when handed a nested `List<List<double>>` dst.
 class _HandBuffers {
   final Float32List inputBuffer;
-  final List<List<double>> outputLandmarks;
-  final List<List<double>> outputScore;
-  final List<List<double>> outputHandedness;
-  final List<List<double>> outputWorldLandmarks;
+  final Float32List outputLandmarks;
+  final Float32List outputScore;
+  final Float32List outputHandedness;
+  final Float32List outputWorldLandmarks;
 
   _HandBuffers({
     required this.inputBuffer,
@@ -81,7 +85,10 @@ class HandLandmarkModelRunner {
   /// Initializes the hand landmark model from pre-loaded model bytes.
   ///
   /// Used by [HandDetectorIsolate] to initialize within a background isolate
-  /// where Flutter asset loading is not available.
+  /// where Flutter asset loading is not available. Passes
+  /// `useIsolateInterpreter: false` to skip the nested IsolateInterpreter
+  /// that would otherwise add a per-inference message hop while already
+  /// running inside a worker isolate.
   Future<void> initializeFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
@@ -90,6 +97,7 @@ class HandLandmarkModelRunner {
 
     await _initializePool(
       performanceConfig: performanceConfig,
+      useIsolateInterpreter: false,
       loader: (options) async {
         final interpreter =
             Interpreter.fromBuffer(modelBytes, options: options);
@@ -103,10 +111,12 @@ class HandLandmarkModelRunner {
   Future<void> _initializePool({
     required PerformanceConfig? performanceConfig,
     required Future<Interpreter> Function(InterpreterOptions) loader,
+    bool useIsolateInterpreter = true,
   }) async {
     await _pool.initialize(
       (options, _) => loader(options),
       performanceConfig: performanceConfig,
+      useIsolateInterpreter: useIsolateInterpreter,
     );
     _allocateBuffers();
     _isInitialized = true;
@@ -117,10 +127,10 @@ class HandLandmarkModelRunner {
     for (final interp in _pool.interpreters) {
       _buffers[interp] = _HandBuffers(
         inputBuffer: Float32List(inputSize * inputSize * 3),
-        outputLandmarks: [List<double>.filled(63, 0.0, growable: false)],
-        outputScore: [List<double>.filled(1, 0.0, growable: false)],
-        outputHandedness: [List<double>.filled(1, 0.0, growable: false)],
-        outputWorldLandmarks: [List<double>.filled(63, 0.0, growable: false)],
+        outputLandmarks: Float32List(63),
+        outputScore: Float32List(1),
+        outputHandedness: Float32List(1),
+        outputWorldLandmarks: Float32List(63),
       );
     }
   }
@@ -171,28 +181,54 @@ class HandLandmarkModelRunner {
       final halfPadH = math.max(0, padH ~/ 2).toDouble();
       final halfPadW = math.max(0, padW ~/ 2).toDouble();
 
-      ImageUtils.matToFloat32Tensor(paddedImage, buffer: buf.inputBuffer);
+      late Float32List landmarksView;
+      late Float32List worldLandmarksView;
+      late Float32List scoreView;
+      late Float32List handednessView;
+
+      if (iso != null) {
+        // IsolateInterpreter path: use scratch buffers and runForMultipleInputs.
+        ImageUtils.matToFloat32Tensor(paddedImage, buffer: buf.inputBuffer);
+        await iso.runForMultipleInputs(
+          [buf.inputBuffer.buffer],
+          <int, Object>{
+            0: buf.outputLandmarks.buffer,
+            1: buf.outputScore.buffer,
+            2: buf.outputHandedness.buffer,
+            3: buf.outputWorldLandmarks.buffer,
+          },
+        );
+        landmarksView = buf.outputLandmarks;
+        worldLandmarksView = buf.outputWorldLandmarks;
+        scoreView = buf.outputScore;
+        handednessView = buf.outputHandedness;
+      } else {
+        // Direct path: write straight into the input tensor's native memory,
+        // invoke(), then read outputs as Float32List views — no marshalling.
+        final inputTensor = interp.getInputTensor(0);
+        final tensorInputView =
+            inputTensor.data.buffer.asFloat32List(0, inputSize * inputSize * 3);
+        ImageUtils.matToFloat32Tensor(paddedImage, buffer: tensorInputView);
+
+        interp.invoke();
+
+        landmarksView =
+            interp.getOutputTensor(0).data.buffer.asFloat32List(0, 63);
+        scoreView = interp.getOutputTensor(1).data.buffer.asFloat32List(0, 1);
+        handednessView =
+            interp.getOutputTensor(2).data.buffer.asFloat32List(0, 1);
+        worldLandmarksView =
+            interp.getOutputTensor(3).data.buffer.asFloat32List(0, 63);
+      }
 
       resizedImage.dispose();
       paddedImage.dispose();
 
-      final outputs = {
-        0: buf.outputLandmarks,
-        1: buf.outputScore,
-        2: buf.outputHandedness,
-        3: buf.outputWorldLandmarks,
-      };
-      if (iso != null) {
-        await iso.runForMultipleInputs([buf.inputBuffer.buffer], outputs);
-      } else {
-        interp.runForMultipleInputs([buf.inputBuffer.buffer], outputs);
-      }
-
       return _parseLandmarks(
-        buf.outputLandmarks,
-        buf.outputWorldLandmarks,
-        buf.outputScore,
-        buf.outputHandedness,
+        landmarksView,
+        worldLandmarksView,
+        scoreView,
+        handednessView,
         halfPadW: halfPadW,
         halfPadH: halfPadH,
         resizeScaleW: resizeScaleW,
@@ -203,26 +239,9 @@ class HandLandmarkModelRunner {
     });
   }
 
-  /// Iterates the flat landmark buffer and builds a [HandLandmark] list.
-  ///
-  /// [data] is a flat list of `numHandLandmarks * 3` values (x, y, z interleaved).
-  /// [transform] receives the base index and a 3-element slice [x, y, z] and
-  /// returns the [HandLandmark] for that point.
-  List<HandLandmark> _parseLandmarkList(
-    List<double> data,
-    HandLandmark Function(int base, List<double> vals) transform,
-  ) {
-    final result = <HandLandmark>[];
-    for (int i = 0; i < numHandLandmarks; i++) {
-      final base = i * 3;
-      result.add(transform(base, [data[base], data[base + 1], data[base + 2]]));
-    }
-    return result;
-  }
-
   /// Parses model outputs into HandLandmarks.
   ///
-  /// The model outputs:
+  /// The model outputs (read from flat Float32List buffers):
   /// - landmarks: [1, 63] - 21 points × 3 (x, y, z) in 224x224 space
   /// - worldLandmarks: [1, 63] - 21 world-space points × 3 (x, y, z)
   /// - score: [1, 1] - hand confidence (0-1 after sigmoid)
@@ -234,10 +253,10 @@ class HandLandmarkModelRunner {
   /// rescaled_xy[:, 0] = (rescaled_xy[:, 0] * input_w - half_pad_size[0]) / resize_scale[0]
   /// rescaled_xy[:, 1] = (rescaled_xy[:, 1] * input_h - half_pad_size[1]) / resize_scale[1]
   HandLandmarks _parseLandmarks(
-    List<List<double>> landmarksData,
-    List<List<double>> worldLandmarksData,
-    List<List<double>> scoreData,
-    List<List<double>> handednessData, {
+    Float32List landmarksData,
+    Float32List worldLandmarksData,
+    Float32List scoreData,
+    Float32List handednessData, {
     required double halfPadW,
     required double halfPadH,
     required double resizeScaleW,
@@ -245,37 +264,35 @@ class HandLandmarkModelRunner {
     required int cropWidth,
     required int cropHeight,
   }) {
-    final rawScore = scoreData[0][0];
-    final score = sigmoid(rawScore);
+    final score = sigmoid(scoreData[0]);
+    final handedness =
+        handednessData[0] > 0.5 ? Handedness.right : Handedness.left;
 
-    final rawHandedness = handednessData[0][0];
-    final handedness = rawHandedness > 0.5 ? Handedness.right : Handedness.left;
-
-    final raw = landmarksData[0];
-    final landmarks = _parseLandmarkList(
-      raw,
-      (base, vals) => HandLandmark(
-        type: HandLandmarkType.values[base ~/ 3],
-        x: ((vals[0] - halfPadW) / resizeScaleW)
+    final landmarks = <HandLandmark>[];
+    for (int i = 0; i < numHandLandmarks; i++) {
+      final base = i * 3;
+      landmarks.add(HandLandmark(
+        type: HandLandmarkType.values[i],
+        x: ((landmarksData[base] - halfPadW) / resizeScaleW)
             .clamp(0.0, cropWidth.toDouble()),
-        y: ((vals[1] - halfPadH) / resizeScaleH)
+        y: ((landmarksData[base + 1] - halfPadH) / resizeScaleH)
             .clamp(0.0, cropHeight.toDouble()),
-        z: vals[2],
+        z: landmarksData[base + 2],
         visibility: score,
-      ),
-    );
+      ));
+    }
 
-    final rawWorld = worldLandmarksData[0];
-    final worldLandmarks = _parseLandmarkList(
-      rawWorld,
-      (base, vals) => HandLandmark(
-        type: HandLandmarkType.values[base ~/ 3],
-        x: vals[0],
-        y: vals[1],
-        z: vals[2],
+    final worldLandmarks = <HandLandmark>[];
+    for (int i = 0; i < numHandLandmarks; i++) {
+      final base = i * 3;
+      worldLandmarks.add(HandLandmark(
+        type: HandLandmarkType.values[i],
+        x: worldLandmarksData[base],
+        y: worldLandmarksData[base + 1],
+        z: worldLandmarksData[base + 2],
         visibility: score,
-      ),
-    );
+      ));
+    }
 
     return HandLandmarks(
       landmarks: landmarks,

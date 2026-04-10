@@ -1,5 +1,5 @@
 PODS:
-  - camera_desktop (0.1.0):
+  - camera_desktop (1.1.2):
     - FlutterMacOS
   - file_selector_macos (0.0.1):
     - FlutterMacOS
@@ -35,11 +35,11 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
 
 SPEC CHECKSUMS:
-  camera_desktop: 8b0acf3142f8bdcfddd923edcb0d9e20f318f385
+  camera_desktop: a3e0776e9fdd78bd8f032186cffecd3e3b4ef159
   file_selector_macos: 6280b52b459ae6c590af5d78fc35c7267a3c4b31
   flutter_litert: 1bbe6e8757c574ab66044233b98353f34eaa7e29
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  hand_detection: a4923b36dd6271a92cf6a2dec0e7e7a365c66928
+  hand_detection: 8ffa633b83d63ce6b005c6c26436209b4384b1c6
   path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
 
 PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f

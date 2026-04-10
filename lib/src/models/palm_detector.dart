@@ -72,11 +72,17 @@ class PalmDetector {
   /// Pre-allocated input buffer.
   Float32List? _inputBuffer;
 
-  /// Pre-allocated box regressor output [1, 2016, 18].
-  List<List<List<double>>>? _outputBoxes;
+  /// Pre-allocated box regressor output, flat Float32 view of [1, 2016, 18].
+  /// Backed by a ByteBuffer that's passed directly to TFLite to avoid the
+  /// boxed-double round-trip in flutter_litert's Tensor.copyTo for List dst.
+  Float32List? _boxesData;
 
-  /// Pre-allocated classification score output [1, 2016, 1].
-  List<List<List<double>>>? _outputScores;
+  /// Pre-allocated classification score output, flat Float32 view of [1, 2016, 1].
+  Float32List? _scoresData;
+
+  /// Number of values per anchor in the box regressor output (18: cx, cy, w, h
+  /// followed by 7 keypoint x/y pairs). Cached after init.
+  int _boxStride = 18;
 
   /// Creates a palm detector with the specified score threshold.
   PalmDetector({this.scoreThreshold = 0.45});
@@ -94,7 +100,10 @@ class PalmDetector {
   /// Initializes the palm detector from pre-loaded model bytes.
   ///
   /// Used by [HandDetectorIsolate] to initialize within a background isolate
-  /// where Flutter asset loading is not available.
+  /// where Flutter asset loading is not available. Passes
+  /// `useIsolateInterpreter: false` to skip the nested IsolateInterpreter
+  /// that would otherwise add a per-inference message hop while already
+  /// running inside a worker isolate.
   Future<void> initializeFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
@@ -102,13 +111,15 @@ class PalmDetector {
     await _initWith(
       (options) async => Interpreter.fromBuffer(modelBytes, options: options),
       performanceConfig,
+      useIsolateInterpreter: false,
     );
   }
 
   Future<void> _initWith(
     Future<Interpreter> Function(InterpreterOptions) loader,
-    PerformanceConfig? performanceConfig,
-  ) async {
+    PerformanceConfig? performanceConfig, {
+    bool useIsolateInterpreter = true,
+  }) async {
     if (_isInitialized) await dispose();
     await _pool.initialize(
       (options, _) async {
@@ -118,6 +129,7 @@ class PalmDetector {
         return interpreter;
       },
       performanceConfig: performanceConfig,
+      useIsolateInterpreter: useIsolateInterpreter,
     );
     _isInitialized = true;
   }
@@ -145,24 +157,21 @@ class PalmDetector {
     _anchors = generateAnchors(anchorOptions);
 
     final numAnchors = _anchors.length;
-    _outputBoxes = List.generate(
-      1,
-      (_) => List.generate(
-        numAnchors,
-        (_) => List<double>.filled(18, 0.0, growable: false),
-        growable: false,
-      ),
-      growable: false,
-    );
-    _outputScores = List.generate(
-      1,
-      (_) => List.generate(
-        numAnchors,
-        (_) => List<double>.filled(1, 0.0, growable: false),
-        growable: false,
-      ),
-      growable: false,
-    );
+
+    // Read the box stride from the actual output tensor shape so we don't
+    // hardcode 18 (some model variants use a different layout).
+    final boxesShape = interpreter.getOutputTensor(0).shape;
+    _boxStride = boxesShape.last;
+
+    // Allocate flat Float32 outputs and pass their .buffer (ByteBuffer)
+    // to TFLite. This avoids the slow Tensor.copyTo path that otherwise
+    // boxes ~38k Doubles per inference.
+    _boxesData = Float32List(numAnchors * _boxStride);
+    _scoresData = Float32List(numAnchors);
+
+    // Pre-allocate the input buffer eagerly so the first inference doesn't
+    // pay an alloc.
+    _inputBuffer = Float32List(_inH * _inW * 3);
   }
 
   /// Returns true if the detector has been initialized.
@@ -172,8 +181,8 @@ class PalmDetector {
   Future<void> dispose() async {
     await _pool.dispose();
     _inputBuffer = null;
-    _outputBoxes = null;
-    _outputScores = null;
+    _boxesData = null;
+    _scoresData = null;
     _isInitialized = false;
   }
 
@@ -198,32 +207,49 @@ class PalmDetector {
       _inH,
     );
 
-    final inputSize = _inH * _inW * 3;
-    _inputBuffer ??= Float32List(inputSize);
-    ImageUtils.matToFloat32Tensor(paddedImage, buffer: _inputBuffer);
+    late Float32List boxesView;
+    late Float32List scoresView;
+
+    await _pool.withInterpreter((interp, iso) async {
+      if (iso != null) {
+        // IsolateInterpreter path: must go through runForMultipleInputs.
+        // Convert into our scratch _inputBuffer first, then ship its
+        // ByteBuffer to the iso. Outputs land in _boxesData / _scoresData
+        // via the ByteBuffer fast branch of Tensor.copyTo.
+        ImageUtils.matToFloat32Tensor(paddedImage, buffer: _inputBuffer);
+        await iso.runForMultipleInputs(
+          [_inputBuffer!.buffer],
+          <int, Object>{
+            0: _boxesData!.buffer,
+            1: _scoresData!.buffer,
+          },
+        );
+        boxesView = _boxesData!;
+        scoresView = _scoresData!;
+      } else {
+        // Direct path (no nested isolate): write the BGR→RGB normalized
+        // tensor straight into the input tensor's native memory, then
+        // invoke() and read output tensors as Float32List views — no
+        // runForMultipleInputs, no Tensor.copyTo, no marshalling.
+        final inputTensor = interp.getInputTensor(0);
+        final tensorInputView =
+            inputTensor.data.buffer.asFloat32List(0, _inH * _inW * 3);
+        ImageUtils.matToFloat32Tensor(paddedImage, buffer: tensorInputView);
+
+        interp.invoke();
+
+        final boxesTensor = interp.getOutputTensor(0);
+        final scoresTensor = interp.getOutputTensor(1);
+        boxesView = boxesTensor.data.buffer
+            .asFloat32List(0, _anchors.length * _boxStride);
+        scoresView = scoresTensor.data.buffer.asFloat32List(0, _anchors.length);
+      }
+    });
 
     resizedImage.dispose();
     paddedImage.dispose();
 
-    final inputs = [_inputBuffer!.buffer];
-    final outputs = <int, Object>{
-      0: _outputBoxes!,
-      1: _outputScores!,
-    };
-
-    await _pool.withInterpreter((interp, iso) async {
-      if (iso != null) {
-        await iso.runForMultipleInputs(inputs, outputs);
-      } else {
-        interp.runForMultipleInputs(inputs, outputs);
-      }
-    });
-
-    final decodedBoxes = _decodeBoxes(
-      _outputBoxes![0],
-      _outputScores![0],
-    );
-
+    final decodedBoxes = _decodeBoxes(boxesView, scoresView);
     return _postprocess(decodedBoxes);
   }
 
@@ -231,24 +257,27 @@ class PalmDetector {
   ///
   /// Returns decoded boxes as [score, cx, cy, boxSize, kp0X, kp0Y, kp2X, kp2Y].
   ///
-  /// Optimization: Only decodes the 4 coordinate pairs actually used (indices 0-5, 8-9)
-  /// instead of all 9 pairs (18 values), avoiding intermediate list allocation.
-  /// Raw box layout: [cx, cy, w, h, kp0_x, kp0_y, kp1_x, kp1_y, kp2_x, kp2_y, ...] where each value is offset relative to anchor, scaled by 192.
+  /// Reads directly from flat Float32List outputs to avoid the boxed-double
+  /// overhead of nested `List<List<double>>`. Raw box layout per anchor:
+  /// [cx, cy, w, h, kp0_x, kp0_y, kp1_x, kp1_y, kp2_x, kp2_y, ...] where
+  /// each value is offset relative to anchor, scaled by 192.
   List<List<double>> _decodeBoxes(
-    List<List<double>> rawBoxes,
-    List<List<double>> rawScores, {
+    Float32List rawBoxes,
+    Float32List rawScores, {
     double scale = 192.0,
   }) {
     final results = <List<double>>[];
     final invScale = 1.0 / scale;
+    final numAnchors = rawScores.length;
+    final stride = _boxStride;
 
-    for (int i = 0; i < rawBoxes.length; i++) {
-      final rawScore = rawScores[i][0];
+    for (int i = 0; i < numAnchors; i++) {
+      final rawScore = rawScores[i];
       final score = litert.sigmoid(rawScore);
 
       if (score <= scoreThreshold) continue;
 
-      final rawBox = rawBoxes[i];
+      final base = i * stride;
       final anchor = _anchors[i];
 
       final anchorW = anchor[2];
@@ -256,20 +285,20 @@ class PalmDetector {
       final anchorX = anchor[0];
       final anchorY = anchor[1];
 
-      final cx = rawBox[0] * anchorW * invScale + anchorX;
-      final cy = rawBox[1] * anchorH * invScale + anchorY;
+      final cx = rawBoxes[base] * anchorW * invScale + anchorX;
+      final cy = rawBoxes[base + 1] * anchorH * invScale + anchorY;
 
-      final wPoint = rawBox[2] * anchorW * invScale + anchorX;
-      final hPoint = rawBox[3] * anchorH * invScale + anchorY;
+      final wPoint = rawBoxes[base + 2] * anchorW * invScale + anchorX;
+      final hPoint = rawBoxes[base + 3] * anchorH * invScale + anchorY;
       final w = wPoint - anchorX;
       final h = hPoint - anchorY;
       final boxSize = math.max(w, h);
 
-      final kp0X = rawBox[4] * anchorW * invScale + anchorX;
-      final kp0Y = rawBox[5] * anchorH * invScale + anchorY;
+      final kp0X = rawBoxes[base + 4] * anchorW * invScale + anchorX;
+      final kp0Y = rawBoxes[base + 5] * anchorH * invScale + anchorY;
 
-      final kp2X = rawBox[8] * anchorW * invScale + anchorX;
-      final kp2Y = rawBox[9] * anchorH * invScale + anchorY;
+      final kp2X = rawBoxes[base + 8] * anchorW * invScale + anchorX;
+      final kp2Y = rawBoxes[base + 9] * anchorH * invScale + anchorY;
 
       results.add([score, cx, cy, boxSize, kp0X, kp0Y, kp2X, kp2Y]);
     }

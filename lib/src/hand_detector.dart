@@ -123,15 +123,13 @@ class HandDetector {
     this.detectorConf = 0.45,
     this.maxDetections = 10,
     this.minLandmarkScore = 0.5,
-    int interpreterPoolSize = 1,
+    this.interpreterPoolSize = 1,
     this.performanceConfig = const PerformanceConfig(),
     this.enableGestures = false,
     this.gestureMinConfidence = 0.5,
-  }) : interpreterPoolSize = performanceConfig.mode == PerformanceMode.disabled
-            ? interpreterPoolSize
-            : 1 {
+  }) {
     _palm = PalmDetector(scoreThreshold: detectorConf);
-    _lm = HandLandmarkModelRunner(poolSize: this.interpreterPoolSize);
+    _lm = HandLandmarkModelRunner(poolSize: interpreterPoolSize);
     if (enableGestures) {
       _gestureRecognizer =
           GestureRecognizer(minConfidence: gestureMinConfidence);

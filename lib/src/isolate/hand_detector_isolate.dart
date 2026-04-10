@@ -112,7 +112,7 @@ class HandDetectorIsolate extends IsolateWorkerBase {
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
-    PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
     double gestureMinConfidence = 0.5,
   }) async {

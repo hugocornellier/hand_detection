@@ -38,20 +38,22 @@ class GestureRecognizer {
   /// Gestures below this threshold will return [GestureType.unknown].
   final double minConfidence;
 
-  /// Hand landmarks input tensor [1, 21, 3].
-  late List<List<List<double>>> _handInput;
+  /// Hand landmarks input tensor [1, 21, 3], stored as flat Float32List.
+  /// Passed to TFLite as `.buffer` (a `ByteBuffer`) to skip the boxed-double
+  /// allocation that nested-list inputs incur in `Tensor.copyTo`.
+  late Float32List _handInput;
 
   /// Handedness input tensor [1, 1].
-  late List<List<double>> _handednessInput;
+  late Float32List _handednessInput;
 
   /// World-space hand landmarks input tensor [1, 21, 3].
-  late List<List<List<double>>> _worldHandInput;
+  late Float32List _worldHandInput;
 
   /// Embedder output tensor [1, 128].
-  late List<List<double>> _embeddingOutput;
+  late Float32List _embeddingOutput;
 
   /// Classifier output tensor [1, 8] (gesture probabilities).
-  late List<List<double>> _gestureOutput;
+  late Float32List _gestureOutput;
 
   /// Creates a gesture recognizer with the specified minimum confidence threshold.
   ///
@@ -83,7 +85,10 @@ class GestureRecognizer {
   /// Initializes the gesture recognizer from pre-loaded model bytes.
   ///
   /// Used by [HandDetectorIsolate] to initialize within a background isolate
-  /// where Flutter asset loading is not available.
+  /// where Flutter asset loading is not available. Passes
+  /// `useIsolateInterpreter: false` to skip the nested IsolateInterpreters
+  /// that would otherwise add a per-inference message hop on each pool while
+  /// already running inside a worker isolate.
   Future<void> initializeFromBuffers({
     required Uint8List embedderBytes,
     required Uint8List classifierBytes,
@@ -93,6 +98,7 @@ class GestureRecognizer {
 
     await _initializeWith(
       performanceConfig: performanceConfig,
+      useIsolateInterpreter: false,
       embedderLoader: (options) async =>
           Interpreter.fromBuffer(embedderBytes, options: options),
       classifierLoader: (options) async =>
@@ -104,6 +110,7 @@ class GestureRecognizer {
     required PerformanceConfig? performanceConfig,
     required Future<Interpreter> Function(InterpreterOptions) embedderLoader,
     required Future<Interpreter> Function(InterpreterOptions) classifierLoader,
+    bool useIsolateInterpreter = true,
   }) async {
     await _embedderPool.initialize(
       (options, _) async {
@@ -112,6 +119,7 @@ class GestureRecognizer {
         return interp;
       },
       performanceConfig: performanceConfig,
+      useIsolateInterpreter: useIsolateInterpreter,
     );
 
     await _classifierPool.initialize(
@@ -121,35 +129,19 @@ class GestureRecognizer {
         return interp;
       },
       performanceConfig: performanceConfig,
+      useIsolateInterpreter: useIsolateInterpreter,
     );
 
     _allocateBuffers();
     _isInitialized = true;
   }
 
-  static List<List<double>> _allocate2D(int rows, int cols) => List.generate(
-        rows,
-        (_) => List<double>.filled(cols, 0.0, growable: false),
-        growable: false,
-      );
-
-  static List<List<List<double>>> _allocate3D(int rows, int cols, int depth) =>
-      List.generate(
-        rows,
-        (_) => List.generate(
-          cols,
-          (_) => List<double>.filled(depth, 0.0, growable: false),
-          growable: false,
-        ),
-        growable: false,
-      );
-
   void _allocateBuffers() {
-    _handInput = _allocate3D(1, 21, 3);
-    _handednessInput = _allocate2D(1, 1);
-    _worldHandInput = _allocate3D(1, 21, 3);
-    _embeddingOutput = _allocate2D(1, 128);
-    _gestureOutput = _allocate2D(1, 8);
+    _handInput = Float32List(21 * 3);
+    _handednessInput = Float32List(1);
+    _worldHandInput = Float32List(21 * 3);
+    _embeddingOutput = Float32List(128);
+    _gestureOutput = Float32List(8);
   }
 
   /// Returns true if the recognizer has been initialized.
@@ -192,42 +184,46 @@ class GestureRecognizer {
     }
 
     for (int i = 0; i < 21; i++) {
-      _handInput[0][i][0] = landmarks[i].x / imageWidth;
-      _handInput[0][i][1] = landmarks[i].y / imageHeight;
-      _handInput[0][i][2] = landmarks[i].z / imageWidth;
+      final base = i * 3;
+      _handInput[base] = landmarks[i].x / imageWidth;
+      _handInput[base + 1] = landmarks[i].y / imageHeight;
+      _handInput[base + 2] = landmarks[i].z / imageWidth;
     }
 
-    _handednessInput[0][0] = (handedness == Handedness.right) ? 1.0 : 0.0;
+    _handednessInput[0] = (handedness == Handedness.right) ? 1.0 : 0.0;
 
     for (int i = 0; i < 21; i++) {
-      _worldHandInput[0][i][0] = worldLandmarks[i].x;
-      _worldHandInput[0][i][1] = worldLandmarks[i].y;
-      _worldHandInput[0][i][2] = worldLandmarks[i].z;
+      final base = i * 3;
+      _worldHandInput[base] = worldLandmarks[i].x;
+      _worldHandInput[base + 1] = worldLandmarks[i].y;
+      _worldHandInput[base + 2] = worldLandmarks[i].z;
     }
 
+    final embedderInputs = <Object>[
+      _handInput.buffer,
+      _handednessInput.buffer,
+      _worldHandInput.buffer,
+    ];
+    final embedderOutputs = <int, Object>{0: _embeddingOutput.buffer};
     await _embedderPool.withInterpreter((interp, iso) async {
       if (iso != null) {
-        await iso.runForMultipleInputs(
-          [_handInput, _handednessInput, _worldHandInput],
-          {0: _embeddingOutput},
-        );
+        await iso.runForMultipleInputs(embedderInputs, embedderOutputs);
       } else {
-        interp.runForMultipleInputs(
-          [_handInput, _handednessInput, _worldHandInput],
-          {0: _embeddingOutput},
-        );
+        interp.runForMultipleInputs(embedderInputs, embedderOutputs);
       }
     });
 
+    final classifierInputs = <Object>[_embeddingOutput.buffer];
+    final classifierOutputs = <int, Object>{0: _gestureOutput.buffer};
     await _classifierPool.withInterpreter((interp, iso) async {
       if (iso != null) {
-        await iso.run(_embeddingOutput, _gestureOutput);
+        await iso.runForMultipleInputs(classifierInputs, classifierOutputs);
       } else {
-        interp.run(_embeddingOutput, _gestureOutput);
+        interp.runForMultipleInputs(classifierInputs, classifierOutputs);
       }
     });
 
-    final probs = _gestureOutput[0];
+    final probs = _gestureOutput;
     var maxIdx = 0;
     for (int i = 1; i < 8; i++) {
       if (probs[i] > probs[maxIdx]) maxIdx = i;
