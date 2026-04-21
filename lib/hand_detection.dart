@@ -83,3 +83,6 @@ export 'src/dart_registration.dart';
 
 // Re-export cv.Mat for users who want to use detectOnMat directly
 export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
+
+export 'package:flutter_litert/flutter_litert.dart'
+    show packYuv420, YuvPlane, YuvLayout, PackedYuv;

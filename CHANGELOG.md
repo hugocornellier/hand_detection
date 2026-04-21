@@ -1,3 +1,13 @@
+## 2.1.0
+
+* Fix Android live camera in the example app:
+  * Replace the per-pixel Dart YUV→BGR loop with `flutter_litert`'s shared `packYuv420` helper + native `cv.cvtColor`, matching `face_detection_tflite`.
+  * `_rotationFlagForFrame` now handles all four device orientations (portrait up/down, landscape left/right) via a combined `sensorOrientation` + `DeviceOrientation` formula. Previously only one of the two landscape directions rendered correctly; the other was 180° off.
+  * Mirror the detection overlay on Android front camera to match `CameraPreview`'s auto-mirrored preview texture.
+* Align example app live-camera layout with `face_detection_tflite`: Material+Row top bar (replaces AppBar), flip-camera button, FPS + detection-time display, rotating top bar in landscape with safe-area padding, and a settings popup housing hand-specific controls (Max Hands slider, gesture toggle).
+* Re-export `packYuv420`, `YuvPlane`, `YuvLayout`, and `PackedYuv` from `flutter_litert` through the `hand_detection` barrel.
+* Update `flutter_litert` to `^2.2.0`.
+
 ## 2.0.9
 
 * Update flutter_litert -> 2.1.0

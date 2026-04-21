@@ -1,8 +1,8 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:math';
-import 'dart:collection';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:image_picker/image_picker.dart';
@@ -10,6 +10,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:hand_detection/hand_detection.dart';
 import 'package:camera/camera.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
+import 'package:sensors_plus/sensors_plus.dart';
 
 /// Calculates the 4 corner points of a rotated rectangle.
 ///
@@ -36,35 +37,6 @@ List<Offset> getRotatedRectPoints(
     Offset(cx + a * height + b * width, cy - b * height + a * width),
     Offset(cx - a * height + b * width, cy + b * height + a * width),
   ];
-}
-
-/// FPS calculator class ported from Python's CvFpsCalc
-class FpsCalculator {
-  final int bufferLen;
-  final Queue<double> _diffTimes;
-  DateTime _startTime;
-
-  FpsCalculator({this.bufferLen = 10})
-      : _diffTimes = Queue<double>(),
-        _startTime = DateTime.now();
-
-  double get() {
-    final currentTime = DateTime.now();
-    final differentTime = currentTime.difference(_startTime).inMicroseconds /
-        1000.0; // milliseconds
-    _startTime = currentTime;
-
-    _diffTimes.add(differentTime);
-    if (_diffTimes.length > bufferLen) {
-      _diffTimes.removeFirst();
-    }
-
-    if (_diffTimes.isEmpty) return 0.0;
-
-    final avgDiffTime = _diffTimes.reduce((a, b) => a + b) / _diffTimes.length;
-    final fps = 1000.0 / avgDiffTime;
-    return double.parse(fps.toStringAsFixed(2));
-  }
 }
 
 void main() {
@@ -709,9 +681,11 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isImageStreamStarted = false;
   HandDetectorIsolate? _handDetectorIsolate;
   int _maxHands = 2;
+  bool _enableGestures = true;
 
   bool _isInitialized = false;
   bool _isProcessing = false;
+  bool _isSwitchingCamera = false;
   List<Hand> _currentHands = [];
   String? _errorMessage;
   int _frameCount = 0;
@@ -719,18 +693,38 @@ class _CameraScreenState extends State<CameraScreen> {
       1; // Process every frame (matches Python default)
   Size? _imageSize;
   int? _sensorOrientation;
-  // ignore: unused_field
   bool _isFrontCamera = false;
+  List<CameraDescription> _availableCameras = const [];
+  String _deviceOrientation = 'Portrait Up';
+  StreamSubscription<AccelerometerEvent>? _accelerometerSub;
 
-  // FPS calculation
-  final FpsCalculator _fpsCalculator = FpsCalculator(bufferLen: 10);
-  double _currentFps = 0.0;
+  // FPS / detection-time display (inline, matches face_detection_tflite)
+  int _fps = 0;
+  DateTime? _lastFpsUpdate;
+  int _framesSinceLastUpdate = 0;
+  int _detectionTimeMs = 0;
 
   @override
   void initState() {
     super.initState();
     _initializeHandDetector();
     _initCamera();
+
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      _accelerometerSub = accelerometerEventStream().listen((event) {
+        final next = event.x.abs() > event.y.abs()
+            ? (event.x > 0 ? 'Landscape Left' : 'Landscape Right')
+            : (event.y > 0 ? 'Portrait Up' : 'Portrait Down');
+        if (next == 'Portrait Down' &&
+            (_deviceOrientation == 'Landscape Left' ||
+                _deviceOrientation == 'Landscape Right')) {
+          return;
+        }
+        if (next != _deviceOrientation && mounted) {
+          setState(() => _deviceOrientation = next);
+        }
+      });
+    }
   }
 
   Future<void> _initializeHandDetector() async {
@@ -742,7 +736,7 @@ class _CameraScreenState extends State<CameraScreen> {
         maxDetections: _maxHands,
         minLandmarkScore: 0.5,
         performanceConfig: const PerformanceConfig.xnnpack(),
-        enableGestures: true,
+        enableGestures: _enableGestures,
         gestureMinConfidence: 0.5,
       );
       if (mounted) {
@@ -782,36 +776,124 @@ class _CameraScreenState extends State<CameraScreen> {
         }
         return;
       }
+      _availableCameras = cameras;
 
       final camera = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
 
-      _cameraController = CameraController(
-        camera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
-      );
-
-      await _cameraController!.initialize();
-      if (!mounted) return;
-
-      setState(() {
-        _sensorOrientation = _cameraController!.description.sensorOrientation;
-        _isFrontCamera = _cameraController!.description.lensDirection ==
-            CameraLensDirection.front;
-      });
-
-      await _cameraController!.startImageStream(_processCameraImage);
-      _isImageStreamStarted = true;
+      await _startControllerFor(camera);
     } catch (e, st) {
       debugPrint('Camera init failed: $e');
       debugPrint('$st');
       if (mounted) {
         setState(() => _errorMessage = 'Camera init failed: $e');
       }
+    }
+  }
+
+  Future<void> _startControllerFor(CameraDescription camera) async {
+    final controller = CameraController(
+      camera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.yuv420,
+    );
+
+    await controller.initialize();
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+
+    _cameraController = controller;
+
+    setState(() {
+      _sensorOrientation = controller.description.sensorOrientation;
+      _isFrontCamera =
+          controller.description.lensDirection == CameraLensDirection.front;
+    });
+
+    await controller.startImageStream(_processCameraImage);
+    _isImageStreamStarted = true;
+  }
+
+  bool get _canSwitchCamera {
+    if (kIsWeb) return false;
+    if (!(Platform.isAndroid || Platform.isIOS)) return false;
+    final hasFront = _availableCameras
+        .any((c) => c.lensDirection == CameraLensDirection.front);
+    final hasBack = _availableCameras
+        .any((c) => c.lensDirection == CameraLensDirection.back);
+    return hasFront && hasBack;
+  }
+
+  Future<void> _switchCamera() async {
+    if (_isSwitchingCamera) return;
+    if (!_canSwitchCamera) return;
+
+    final target =
+        _isFrontCamera ? CameraLensDirection.back : CameraLensDirection.front;
+    final next = _availableCameras.firstWhere(
+      (c) => c.lensDirection == target,
+      orElse: () => _availableCameras.first,
+    );
+
+    setState(() => _isSwitchingCamera = true);
+    try {
+      final prev = _cameraController;
+      if (prev != null) {
+        if (_isImageStreamStarted) {
+          try {
+            await prev.stopImageStream();
+          } catch (_) {}
+          _isImageStreamStarted = false;
+        }
+        await prev.dispose();
+      }
+      _currentHands = [];
+      _imageSize = null;
+
+      await _startControllerFor(next);
+    } catch (e, st) {
+      debugPrint('Camera switch failed: $e');
+      debugPrint('$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error switching camera: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSwitchingCamera = false);
+    }
+  }
+
+  void _updateFps() {
+    _framesSinceLastUpdate++;
+    final now = DateTime.now();
+    if (_lastFpsUpdate != null) {
+      final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
+      if (diff >= 1000 && mounted) {
+        setState(() {
+          _fps = (_framesSinceLastUpdate * 1000 / diff).round();
+          _framesSinceLastUpdate = 0;
+          _lastFpsUpdate = now;
+        });
+      }
+    } else {
+      _lastFpsUpdate = now;
+    }
+  }
+
+  int get _barQuarterTurns {
+    switch (_deviceOrientation) {
+      case 'Landscape Left':
+        return 1;
+      case 'Landscape Right':
+        return 3;
+      default:
+        return 0;
     }
   }
 
@@ -825,20 +907,58 @@ class _CameraScreenState extends State<CameraScreen> {
         : DeviceOrientation.landscapeLeft;
   }
 
-  int? _rotationFlagForFrame({required int width, required int height}) {
-    final DeviceOrientation orientation = _effectiveDeviceOrientation(context);
-    final bool isPortrait = orientation == DeviceOrientation.portraitUp ||
-        orientation == DeviceOrientation.portraitDown;
-
-    if (!isPortrait) return null;
-
-    // If the incoming buffer is already portrait, don't rotate it.
-    if (height >= width) return null;
-
+  int? _rotationFlagForFrame({
+    required int width,
+    required int height,
+  }) {
     final int? sensor = _sensorOrientation;
-    if (sensor == 90) return cv.ROTATE_90_COUNTERCLOCKWISE;
-    if (sensor == 270) return cv.ROTATE_90_CLOCKWISE;
+    if (sensor == null) return null;
 
+    // iOS: the camera plugin pre-rotates the image stream per
+    // AVCaptureConnection.videoOrientation, so the historical portrait-only
+    // rotation path still applies. Landscape iOS is handled in step 3 of
+    // the rotation plan (pending empirical verification on device via the
+    // one-shot probe logged from _processCameraImage).
+    if (Platform.isIOS) {
+      final DeviceOrientation orientation =
+          _effectiveDeviceOrientation(context);
+      final bool isPortrait = orientation == DeviceOrientation.portraitUp ||
+          orientation == DeviceOrientation.portraitDown;
+      if (!isPortrait) return null;
+      if (height >= width) return null;
+      if (sensor == 90) return cv.ROTATE_90_CLOCKWISE;
+      if (sensor == 270) return cv.ROTATE_90_COUNTERCLOCKWISE;
+      return null;
+    }
+
+    // Android: combined formula covering all four device orientations.
+    // `sensorOrientation` is the clockwise rotation needed to display the
+    // raw sensor buffer upright in the device's natural orientation;
+    // `deviceRotation` is how far the device is rotated clockwise from
+    // natural (portraitUp=0, landscapeLeft=90, portraitDown=180,
+    // landscapeRight=270; per Flutter's DeviceOrientation enum).
+    if (Platform.isAndroid) {
+      final DeviceOrientation d = _effectiveDeviceOrientation(context);
+      final int deviceRotation = switch (d) {
+        DeviceOrientation.portraitUp => 0,
+        DeviceOrientation.landscapeLeft => 90,
+        DeviceOrientation.portraitDown => 180,
+        DeviceOrientation.landscapeRight => 270,
+      };
+
+      final int total = _isFrontCamera
+          ? (sensor + deviceRotation) % 360
+          : (sensor - deviceRotation + 360) % 360;
+
+      return switch (total) {
+        90 => cv.ROTATE_90_CLOCKWISE,
+        180 => cv.ROTATE_180,
+        270 => cv.ROTATE_90_COUNTERCLOCKWISE,
+        _ => null,
+      };
+    }
+
+    // Desktop / web: camera_desktop delivers already-upright frames.
     return null;
   }
 
@@ -887,58 +1007,51 @@ class _CameraScreenState extends State<CameraScreen> {
         return mat;
       }
 
-      // Mobile: YUV420 format
-      final int yRowStride = image.planes[0].bytesPerRow;
-      final int yPixelStride = image.planes[0].bytesPerPixel ?? 1;
-      final bgrBytes = Uint8List(width * height * 3);
+      // Mobile: YUV420. Pack Y+UV into a contiguous buffer via flutter_litert's
+      // shared `packYuv420`, then hand to OpenCV for native cvtColor. The Dart
+      // per-pixel loop this replaced was ~500ms/frame on Android; cvtColor
+      // runs in single-digit ms.
+      final p0 = image.planes[0];
+      final p1 = image.planes.length > 1 ? image.planes[1] : null;
+      final p2 = image.planes.length > 2 ? image.planes[2] : null;
+      if (p1 == null) return null;
 
-      void writePixel(int x, int y, int yp, int up, int vp) {
-        int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
-        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
-            .round()
-            .clamp(0, 255);
-        int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
-        final int bgrIdx = (y * width + x) * 3;
-        bgrBytes[bgrIdx] = b;
-        bgrBytes[bgrIdx + 1] = g;
-        bgrBytes[bgrIdx + 2] = r;
-      }
+      final packed = packYuv420(
+        width: width,
+        height: height,
+        y: (
+          bytes: p0.bytes,
+          rowStride: p0.bytesPerRow,
+          pixelStride: p0.bytesPerPixel ?? 1,
+        ),
+        u: (
+          bytes: p1.bytes,
+          rowStride: p1.bytesPerRow,
+          pixelStride: p1.bytesPerPixel ?? 1,
+        ),
+        v: p2 == null
+            ? null
+            : (
+                bytes: p2.bytes,
+                rowStride: p2.bytesPerRow,
+                pixelStride: p2.bytesPerPixel ?? 1,
+              ),
+      );
+      if (packed == null) return null;
 
-      if (image.planes.length == 2) {
-        // iOS NV12
-        final int uvRowStride = image.planes[1].bytesPerRow;
-        final int uvPixelStride = image.planes[1].bytesPerPixel ?? 2;
-        for (int y = 0; y < height; y++) {
-          for (int x = 0; x < width; x++) {
-            final int uvIndex =
-                uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-            final int index = y * yRowStride + x * yPixelStride;
-            writePixel(
-                x,
-                y,
-                image.planes[0].bytes[index],
-                image.planes[1].bytes[uvIndex],
-                image.planes[1].bytes[uvIndex + 1]);
-          }
-        }
-      } else if (image.planes.length >= 3) {
-        // Android I420
-        final int uvRowStride = image.planes[1].bytesPerRow;
-        final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
-        for (int y = 0; y < height; y++) {
-          for (int x = 0; x < width; x++) {
-            final int uvIndex =
-                uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-            final int index = y * yRowStride + x * yPixelStride;
-            writePixel(x, y, image.planes[0].bytes[index],
-                image.planes[1].bytes[uvIndex], image.planes[2].bytes[uvIndex]);
-          }
-        }
-      } else {
-        return null;
-      }
-
-      cv.Mat mat = cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
+      final int cvtCode = switch (packed.layout) {
+        YuvLayout.nv12 => cv.COLOR_YUV2BGR_NV12,
+        YuvLayout.nv21 => cv.COLOR_YUV2BGR_NV21,
+        YuvLayout.i420 => cv.COLOR_YUV2BGR_I420,
+      };
+      final cv.Mat yuvMat = cv.Mat.fromList(
+        packed.height + packed.height ~/ 2,
+        packed.width,
+        cv.MatType.CV_8UC1,
+        packed.bytes,
+      );
+      cv.Mat mat = cv.cvtColor(yuvMat, cvtCode);
+      yuvMat.dispose();
 
       final rotationFlag = _rotationFlagForFrame(width: width, height: height);
       if (rotationFlag != null) {
@@ -953,8 +1066,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _processCameraImage(CameraImage image) async {
-    // Calculate FPS
-    final fps = _fpsCalculator.get();
+    _updateFps();
 
     // Skip frames for performance
     _frameCount++;
@@ -994,9 +1106,13 @@ class _CameraScreenState extends State<CameraScreen> {
       // Track detection image size for overlay coordinate mapping.
       final Size detectionSize = Size(mat.cols.toDouble(), mat.rows.toDouble());
 
+      final stopwatch = Stopwatch()..start();
+
       // Run hand detection in background isolate
       final List<Hand> hands =
           await _handDetectorIsolate!.detectHandsFromMat(mat);
+
+      stopwatch.stop();
 
       // Clean up
       mat.dispose();
@@ -1004,7 +1120,7 @@ class _CameraScreenState extends State<CameraScreen> {
       if (mounted) {
         setState(() {
           _currentHands = hands;
-          _currentFps = fps;
+          _detectionTimeMs = stopwatch.elapsedMilliseconds;
           _imageSize = detectionSize;
         });
       }
@@ -1017,6 +1133,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    _accelerometerSub?.cancel();
     if (_isImageStreamStarted) {
       try {
         _cameraController?.stopImageStream();
@@ -1027,46 +1144,222 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Live Hand Detection'),
-        actions: [
-          // Max hands slider
-          if (_isInitialized)
+  Widget _buildCameraTopBar() {
+    final canPop = Navigator.of(context).canPop();
+    final isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
+    final fpsText = SizedBox(
+      width: 70,
+      child: Text(
+        'FPS: $_fps',
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        textAlign: isMobile ? TextAlign.left : TextAlign.right,
+      ),
+    );
+    const separator = Text(
+      ' | ',
+      style: TextStyle(color: Colors.white, fontSize: 14),
+    );
+    final msText = SizedBox(
+      width: 70,
+      child: Text(
+        '${_detectionTimeMs}ms',
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+      ),
+    );
+
+    return Material(
+      color: Colors.black.withAlpha(179),
+      elevation: 4,
+      child: SizedBox(
+        height: kToolbarHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              if (canPop)
+                IconButton(
+                  tooltip: 'Back',
+                  color: Colors.white,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              if (isMobile) ...[
+                const SizedBox(width: 8),
+                fpsText,
+                separator,
+                msText,
+                const Spacer(),
+              ] else
+                const Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'Live Hand Detection',
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              if (_canSwitchCamera)
+                IconButton(
+                  tooltip: _isFrontCamera
+                      ? 'Switch to back camera'
+                      : 'Switch to front camera',
+                  color: Colors.white,
+                  icon: Icon(Platform.isIOS
+                      ? Icons.flip_camera_ios
+                      : Icons.flip_camera_android),
+                  onPressed: _isSwitchingCamera ? null : _switchCamera,
+                ),
+              PopupMenuButton<void>(
+                tooltip: 'Settings',
+                icon: const Icon(Icons.settings, color: Colors.white),
+                color: Colors.blueGrey[900],
+                padding: EdgeInsets.zero,
+                itemBuilder: (context) => [
+                  PopupMenuItem<void>(
+                    enabled: false,
+                    padding: EdgeInsets.zero,
+                    child: StatefulBuilder(
+                      builder: (context, setMenuState) {
+                        return _buildSettingsMenuContent(setMenuState);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              if (!isMobile) ...[
+                const SizedBox(width: 8),
+                fpsText,
+                separator,
+                msText,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsMenuContent(StateSetter setMenuState) {
+    void update(VoidCallback fn) {
+      setState(fn);
+      setMenuState(() {});
+    }
+
+    const sectionLabelStyle = TextStyle(
+      color: Colors.white60,
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 1.2,
+    );
+
+    return SizedBox(
+      width: 260,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('MAX HANDS', style: sectionLabelStyle),
+            const SizedBox(height: 4),
             Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Max: '),
-                SizedBox(
-                  width: 120,
+                Expanded(
                   child: Slider(
                     value: _maxHands.toDouble(),
                     min: 1,
                     max: 10,
                     divisions: 9,
+                    activeColor: Colors.blue,
+                    inactiveColor: Colors.white24,
                     label: '$_maxHands',
-                    onChanged: (value) => _updateMaxHands(value.toInt()),
+                    onChanged: (value) =>
+                        update(() => _maxHands = value.toInt()),
+                    onChangeEnd: (value) => _updateMaxHands(value.toInt()),
                   ),
                 ),
-                Text('$_maxHands'),
-                const SizedBox(width: 16),
+                SizedBox(
+                  width: 28,
+                  child: Text(
+                    '$_maxHands',
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
               ],
             ),
-          if (_isInitialized && _cameraController != null)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Center(
-                child: Text(
-                  '${_currentHands.length} hand(s)',
-                  style: const TextStyle(fontSize: 16),
+            const Divider(color: Colors.white24, height: 24),
+            const Text('GESTURES', style: sectionLabelStyle),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Detect gestures',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
                 ),
-              ),
+                Switch(
+                  value: _enableGestures,
+                  activeTrackColor: Colors.blue,
+                  onChanged: (value) {
+                    update(() => _enableGestures = value);
+                    _updateMaxHands(_maxHands);
+                  },
+                ),
+              ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _positionedTopBar(int turns) {
+    final bar = _buildCameraTopBar();
+    final padding = MediaQuery.of(context).padding;
+    if (turns == 0) {
+      return Positioned(
+        top: padding.top,
+        left: padding.left,
+        right: padding.right,
+        child: bar,
+      );
+    }
+    return Positioned(
+      top: padding.top,
+      bottom: padding.bottom,
+      left: turns == 3 ? padding.left : null,
+      right: turns == 1 ? padding.right : null,
+      width: kToolbarHeight,
+      child: RotatedBox(quarterTurns: turns, child: bar),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized || _cameraController == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Live Hand Detection'),
+        ),
+        body: _buildBody(),
+      );
+    }
+
+    final int turns = _barQuarterTurns;
+
+    return Scaffold(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          _buildBody(),
+          _positionedTopBar(turns),
         ],
       ),
-      body: _buildBody(),
     );
   }
 
@@ -1139,41 +1432,11 @@ class _CameraScreenState extends State<CameraScreen> {
                     painter: CameraHandOverlayPainter(
                       hands: _currentHands,
                       imageSize: _imageSize!,
+                      mirrorHorizontally: Platform.isAndroid && _isFrontCamera,
                     ),
                   ),
               ],
             ),
-          ),
-        ),
-
-        // FPS display (Python style: black outline + white text at top-left)
-        Positioned(
-          top: 10,
-          left: 10,
-          child: Stack(
-            children: [
-              // Black outline
-              Text(
-                'FPS:${_currentFps.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  foreground: Paint()
-                    ..style = PaintingStyle.stroke
-                    ..strokeWidth = 4
-                    ..color = Colors.black,
-                ),
-              ),
-              // White text
-              Text(
-                'FPS:${_currentFps.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ],
           ),
         ),
       ],
@@ -1184,10 +1447,12 @@ class _CameraScreenState extends State<CameraScreen> {
 class CameraHandOverlayPainter extends CustomPainter {
   final List<Hand> hands;
   final Size imageSize;
+  final bool mirrorHorizontally;
 
   CameraHandOverlayPainter({
     required this.hands,
     required this.imageSize,
+    required this.mirrorHorizontally,
   });
 
   @override
@@ -1217,20 +1482,24 @@ class CameraHandOverlayPainter extends CustomPainter {
       offsetY = (size.height - sourceHeight * scaleY) / 2;
     }
 
+    double tx(double x) => mirrorHorizontally
+        ? (sourceWidth - x) * scaleX + offsetX
+        : x * scaleX + offsetX;
+
     for (final hand in hands) {
-      _drawBbox(canvas, hand, scaleX, scaleY, offsetX, offsetY);
+      _drawBbox(canvas, hand, tx, scaleX, scaleY, offsetX, offsetY);
       if (hand.hasLandmarks) {
-        _drawConnections(canvas, hand, scaleX, scaleY, offsetX, offsetY);
-        _drawLandmarks(canvas, hand, scaleX, scaleY, offsetX, offsetY);
+        _drawConnections(canvas, hand, tx, scaleX, scaleY, offsetX, offsetY);
+        _drawLandmarks(canvas, hand, tx, scaleX, scaleY, offsetX, offsetY);
       }
       if (hand.hasGesture) {
-        _drawGesture(canvas, hand, scaleX, scaleY, offsetX, offsetY);
+        _drawGesture(canvas, hand, tx, scaleX, scaleY, offsetX, offsetY);
       }
     }
   }
 
-  void _drawConnections(Canvas canvas, Hand hand, double scaleX, double scaleY,
-      double offsetX, double offsetY) {
+  void _drawConnections(Canvas canvas, Hand hand, double Function(double) tx,
+      double scaleX, double scaleY, double offsetX, double offsetY) {
     final Paint paint = Paint()
       ..color = Colors.green.withValues(alpha: 0.8)
       ..strokeWidth = 3
@@ -1245,20 +1514,19 @@ class CameraHandOverlayPainter extends CustomPainter {
           start.visibility > 0.5 &&
           end.visibility > 0.5) {
         canvas.drawLine(
-          Offset(start.x * scaleX + offsetX, start.y * scaleY + offsetY),
-          Offset(end.x * scaleX + offsetX, end.y * scaleY + offsetY),
+          Offset(tx(start.x), start.y * scaleY + offsetY),
+          Offset(tx(end.x), end.y * scaleY + offsetY),
           paint,
         );
       }
     }
   }
 
-  void _drawLandmarks(Canvas canvas, Hand hand, double scaleX, double scaleY,
-      double offsetX, double offsetY) {
+  void _drawLandmarks(Canvas canvas, Hand hand, double Function(double) tx,
+      double scaleX, double scaleY, double offsetX, double offsetY) {
     for (final HandLandmark l in hand.landmarks) {
       if (l.visibility > 0.5) {
-        final Offset center =
-            Offset(l.x * scaleX + offsetX, l.y * scaleY + offsetY);
+        final Offset center = Offset(tx(l.x), l.y * scaleY + offsetY);
         final Paint glow = Paint()..color = Colors.blue.withValues(alpha: 0.3);
         final Paint point = Paint()..color = Colors.red;
         final Paint centerDot = Paint()..color = Colors.white;
@@ -1269,8 +1537,8 @@ class CameraHandOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawBbox(Canvas canvas, Hand hand, double scaleX, double scaleY,
-      double offsetX, double offsetY) {
+  void _drawBbox(Canvas canvas, Hand hand, double Function(double) tx,
+      double scaleX, double scaleY, double offsetX, double offsetY) {
     // Draw rotated rectangle (red) if rotation data exists
     if (hand.rotation != null &&
         hand.rotatedCenterX != null &&
@@ -1282,7 +1550,7 @@ class CameraHandOverlayPainter extends CustomPainter {
         ..strokeWidth = 2;
 
       final points = getRotatedRectPoints(
-        hand.rotatedCenterX! * scaleX + offsetX,
+        tx(hand.rotatedCenterX!),
         hand.rotatedCenterY! * scaleY + offsetY,
         hand.rotatedSize! * scaleX,
         hand.rotatedSize! * scaleY,
@@ -1303,17 +1571,17 @@ class CameraHandOverlayPainter extends CustomPainter {
       ..color = Colors.orangeAccent.withValues(alpha: 0.08)
       ..style = PaintingStyle.fill;
 
-    final double x1 = hand.boundingBox.left * scaleX + offsetX;
+    final double x1 = tx(hand.boundingBox.left);
     final double y1 = hand.boundingBox.top * scaleY + offsetY;
-    final double x2 = hand.boundingBox.right * scaleX + offsetX;
+    final double x2 = tx(hand.boundingBox.right);
     final double y2 = hand.boundingBox.bottom * scaleY + offsetY;
-    final Rect rect = Rect.fromLTRB(x1, y1, x2, y2);
+    final Rect rect = Rect.fromLTRB(min(x1, x2), y1, max(x1, x2), y2);
     canvas.drawRect(rect, fillPaint);
     canvas.drawRect(rect, boxPaint);
   }
 
-  void _drawGesture(Canvas canvas, Hand hand, double scaleX, double scaleY,
-      double offsetX, double offsetY) {
+  void _drawGesture(Canvas canvas, Hand hand, double Function(double) tx,
+      double scaleX, double scaleY, double offsetX, double offsetY) {
     final gesture = hand.gesture;
     if (gesture == null || gesture.type == GestureType.unknown) return;
 
@@ -1324,8 +1592,7 @@ class CameraHandOverlayPainter extends CustomPainter {
     if (emoji.isEmpty) return;
 
     // Position the emoji above the hand bounding box
-    final double x =
-        (hand.boundingBox.left + hand.boundingBox.right) / 2 * scaleX + offsetX;
+    final double x = tx((hand.boundingBox.left + hand.boundingBox.right) / 2);
     final double y = hand.boundingBox.top * scaleY + offsetY - 20;
 
     // Draw background circle
