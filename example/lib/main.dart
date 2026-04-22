@@ -679,6 +679,8 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? _cameraController;
   bool _isImageStreamStarted = false;
+  int _cameraGeneration = 0;
+  bool _isDisposing = false;
   HandDetectorIsolate? _handDetectorIsolate;
   int _maxHands = 2;
   bool _enableGestures = true;
@@ -794,29 +796,58 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _startControllerFor(CameraDescription camera) async {
+    final generation = ++_cameraGeneration;
     final controller = CameraController(
       camera,
       ResolutionPreset.medium,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.yuv420,
     );
+    var imageStreamStarted = false;
 
-    await controller.initialize();
-    if (!mounted) {
-      await controller.dispose();
-      return;
+    try {
+      await controller.initialize();
+      if (!_isCurrentCameraGeneration(generation)) {
+        await _disposeController(controller, stopStream: false);
+        return;
+      }
+
+      await controller.startImageStream(_processCameraImage);
+      imageStreamStarted = true;
+      if (!_isCurrentCameraGeneration(generation)) {
+        await _disposeController(controller, stopStream: true);
+        return;
+      }
+
+      setState(() {
+        _cameraController = controller;
+        _isImageStreamStarted = true;
+        _sensorOrientation = controller.description.sensorOrientation;
+        _isFrontCamera =
+            controller.description.lensDirection == CameraLensDirection.front;
+      });
+    } catch (_) {
+      await _disposeController(controller, stopStream: imageStreamStarted);
+      rethrow;
     }
+  }
 
-    _cameraController = controller;
+  bool _isCurrentCameraGeneration(int generation) {
+    return mounted && !_isDisposing && generation == _cameraGeneration;
+  }
 
-    setState(() {
-      _sensorOrientation = controller.description.sensorOrientation;
-      _isFrontCamera =
-          controller.description.lensDirection == CameraLensDirection.front;
-    });
-
-    await controller.startImageStream(_processCameraImage);
-    _isImageStreamStarted = true;
+  Future<void> _disposeController(
+    CameraController controller, {
+    required bool stopStream,
+  }) async {
+    if (stopStream) {
+      try {
+        await controller.stopImageStream();
+      } catch (_) {}
+    }
+    try {
+      await controller.dispose();
+    } catch (_) {}
   }
 
   bool get _canSwitchCamera {
@@ -840,20 +871,20 @@ class _CameraScreenState extends State<CameraScreen> {
       orElse: () => _availableCameras.first,
     );
 
-    setState(() => _isSwitchingCamera = true);
-    try {
-      final prev = _cameraController;
-      if (prev != null) {
-        if (_isImageStreamStarted) {
-          try {
-            await prev.stopImageStream();
-          } catch (_) {}
-          _isImageStreamStarted = false;
-        }
-        await prev.dispose();
-      }
+    final prev = _cameraController;
+    final wasStreaming = _isImageStreamStarted;
+    ++_cameraGeneration;
+    setState(() {
+      _isSwitchingCamera = true;
+      _cameraController = null;
+      _isImageStreamStarted = false;
       _currentHands = [];
       _imageSize = null;
+    });
+    try {
+      if (prev != null) {
+        await _disposeController(prev, stopStream: wasStreaming);
+      }
 
       await _startControllerFor(next);
     } catch (e, st) {
@@ -911,6 +942,7 @@ class _CameraScreenState extends State<CameraScreen> {
     required int width,
     required int height,
   }) {
+    if (!mounted) return null;
     final int? sensor = _sensorOrientation;
     if (sensor == null) return null;
 
@@ -1066,6 +1098,9 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _processCameraImage(CameraImage image) async {
+    if (!mounted || _cameraController == null) return;
+    final generation = _cameraGeneration;
+
     _updateFps();
 
     // Skip frames for performance
@@ -1117,7 +1152,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // Clean up
       mat.dispose();
 
-      if (mounted) {
+      if (_isCurrentCameraGeneration(generation)) {
         setState(() {
           _currentHands = hands;
           _detectionTimeMs = stopwatch.elapsedMilliseconds;
@@ -1133,13 +1168,16 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    _isDisposing = true;
+    ++_cameraGeneration;
     _accelerometerSub?.cancel();
-    if (_isImageStreamStarted) {
-      try {
-        _cameraController?.stopImageStream();
-      } catch (_) {}
+    final controller = _cameraController;
+    final wasStreaming = _isImageStreamStarted;
+    _cameraController = null;
+    _isImageStreamStarted = false;
+    if (controller != null) {
+      unawaited(_disposeController(controller, stopStream: wasStreaming));
     }
-    _cameraController?.dispose();
     _handDetectorIsolate?.dispose();
     super.dispose();
   }
@@ -1404,11 +1442,12 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
 
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final cameraAspectRatio = _cameraController!.value.aspectRatio;
+    final cameraAspectRatio = controller.value.aspectRatio;
     final effectiveOrientation = _effectiveDeviceOrientation(context);
     final bool isPortrait =
         effectiveOrientation == DeviceOrientation.portraitUp ||
@@ -1426,7 +1465,7 @@ class _CameraScreenState extends State<CameraScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                CameraPreview(_cameraController!),
+                CameraPreview(controller),
                 if (_currentHands.isNotEmpty && _imageSize != null)
                   CustomPaint(
                     painter: CameraHandOverlayPainter(

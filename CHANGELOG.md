@@ -1,3 +1,7 @@
+## 2.1.1
+
+* Fix iOS camera preview lifecycle in example
+
 ## 2.1.0
 
 * Fix Android live camera in the example app:
