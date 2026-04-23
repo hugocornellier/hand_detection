@@ -1,48 +1,48 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
-import 'dart:math' as math;
+import 'package:flutter/services.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'types.dart';
-import 'util/image_utils.dart';
-import 'models/palm_detector.dart';
-import 'models/hand_landmark_model.dart';
-import 'models/gesture_recognizer.dart';
+import 'isolate/hand_detector_core.dart';
 
-/// Helper class to store preprocessing data for each detected palm.
-///
-/// Contains the palm detection info, preprocessed image, and transformation parameters
-/// needed to convert landmark coordinates back to original image space.
-class _HandCropData {
-  /// The original palm detection result.
-  final PalmDetection palm;
+/// Startup payload transferred to the background isolate via [Isolate.spawn].
+class _IsolateStartupData {
+  final SendPort sendPort;
+  final TransferableTypedData palmDetectionBytes;
+  final TransferableTypedData handLandmarkBytes;
+  final TransferableTypedData? gestureEmbedderBytes;
+  final TransferableTypedData? gestureClassifierBytes;
+  final String modeName;
+  final String landmarkModelName;
+  final double detectorConf;
+  final int maxDetections;
+  final double minLandmarkScore;
+  final int interpreterPoolSize;
+  final String performanceModeName;
+  final int? numThreads;
+  final bool enableGestures;
+  final double gestureMinConfidence;
 
-  /// The cropped and rotated hand image for landmark extraction.
-  final cv.Mat croppedHand;
-
-  /// Rotation angle in radians.
-  final double rotation;
-
-  /// Center X in original image pixels.
-  final double centerX;
-
-  /// Center Y in original image pixels.
-  final double centerY;
-
-  /// Size of the crop region in original image pixels.
-  final double cropSize;
-
-  _HandCropData({
-    required this.palm,
-    required this.croppedHand,
-    required this.rotation,
-    required this.centerX,
-    required this.centerY,
-    required this.cropSize,
+  _IsolateStartupData({
+    required this.sendPort,
+    required this.palmDetectionBytes,
+    required this.handLandmarkBytes,
+    this.gestureEmbedderBytes,
+    this.gestureClassifierBytes,
+    required this.modeName,
+    required this.landmarkModelName,
+    required this.detectorConf,
+    required this.maxDetections,
+    required this.minLandmarkScore,
+    required this.interpreterPoolSize,
+    required this.performanceModeName,
+    required this.numThreads,
+    required this.enableGestures,
+    required this.gestureMinConfidence,
   });
-
-  /// Disposes the cv.Mat to free native memory.
-  void dispose() {
-    croppedHand.dispose();
-  }
 }
 
 /// On-device hand detection and landmark estimation using TensorFlow Lite.
@@ -51,23 +51,44 @@ class _HandCropData {
 /// 1. Palm detection using SSD-based detector with rotation rectangle output
 /// 2. Hand landmark model to extract 21 keypoints per detected hand
 ///
-/// Uses the same models and algorithms as MediaPipe for anchor generation,
-/// box decoding, and rotation handling.
+/// All inference runs in a background isolate, keeping the UI thread free.
 ///
-/// Usage:
+/// ## Usage
+///
 /// ```dart
-/// final detector = HandDetector(
-///   mode: HandMode.boxesAndLandmarks,
-///   landmarkModel: HandLandmarkModel.full,
-/// );
+/// // One-step construction
+/// final detector = await HandDetector.create();
+///
+/// // Or two-step, if you need to configure between construction and init
+/// final detector = HandDetector();
 /// await detector.initialize();
+///
 /// final hands = await detector.detect(imageBytes);
 /// await detector.dispose();
 /// ```
 class HandDetector {
-  late final PalmDetector _palm;
-  late final HandLandmarkModelRunner _lm;
-  GestureRecognizer? _gestureRecognizer;
+  static const String _packageVersion = '2.2.0';
+  static const String _pipelineVersion = 'pipeline_v1';
+
+  /// Version key for the default hand detection pipeline.
+  ///
+  /// Downstream caches can use this to invalidate stored detections when model
+  /// weights, preprocessing, post-processing, thresholds, or coordinate
+  /// conventions change.
+  static const String modelVersion =
+      'hand_detection:$_packageVersion:mode=boxesAndLandmarks:'
+      'landmarkModel=full:gestures=false:$_pipelineVersion';
+
+  /// Builds a version key for a specific hand detector configuration.
+  static String modelVersionFor({
+    HandMode mode = HandMode.boxesAndLandmarks,
+    HandLandmarkModel landmarkModel = HandLandmarkModel.full,
+    bool enableGestures = false,
+  }) {
+    return 'hand_detection:$_packageVersion:mode=${mode.name}:'
+        'landmarkModel=${landmarkModel.name}:gestures=$enableGestures:'
+        '$_pipelineVersion';
+  }
 
   /// Detection mode controlling pipeline behavior.
   final HandMode mode;
@@ -102,9 +123,11 @@ class HandDetector {
   /// Gestures with confidence below this threshold will be reported as [GestureType.unknown].
   final double gestureMinConfidence;
 
-  bool _isInitialized = false;
+  _HandDetectorWorker? _worker;
 
   /// Creates a hand detector with the specified configuration.
+  ///
+  /// The detector is not ready for use until you call [initialize].
   ///
   /// Parameters:
   /// - [mode]: Detection mode (boxes only or boxes + landmarks). Default: [HandMode.boxesAndLandmarks]
@@ -127,35 +150,108 @@ class HandDetector {
     this.performanceConfig = const PerformanceConfig(),
     this.enableGestures = false,
     this.gestureMinConfidence = 0.5,
-  }) {
-    _palm = PalmDetector(scoreThreshold: detectorConf);
-    _lm = HandLandmarkModelRunner(poolSize: interpreterPoolSize);
-    if (enableGestures) {
-      _gestureRecognizer =
-          GestureRecognizer(minConfidence: gestureMinConfidence);
-    }
+  });
+
+  /// Creates and initializes a hand detector in one step.
+  ///
+  /// Convenience factory that combines [HandDetector.new] and [initialize].
+  /// Accepts the same parameters as the constructor.
+  ///
+  /// Example:
+  /// ```dart
+  /// final detector = await HandDetector.create();
+  ///
+  /// // Equivalent to:
+  /// final detector = HandDetector();
+  /// await detector.initialize();
+  /// ```
+  static Future<HandDetector> create({
+    HandMode mode = HandMode.boxesAndLandmarks,
+    HandLandmarkModel landmarkModel = HandLandmarkModel.full,
+    double detectorConf = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
+    bool enableGestures = false,
+    double gestureMinConfidence = 0.5,
+  }) async {
+    final detector = HandDetector(
+      mode: mode,
+      landmarkModel: landmarkModel,
+      detectorConf: detectorConf,
+      maxDetections: maxDetections,
+      minLandmarkScore: minLandmarkScore,
+      interpreterPoolSize: interpreterPoolSize,
+      performanceConfig: performanceConfig,
+      enableGestures: enableGestures,
+      gestureMinConfidence: gestureMinConfidence,
+    );
+    await detector.initialize();
+    return detector;
   }
+
+  /// Returns true if the detector has been initialized and is ready to use.
+  ///
+  /// You must call [initialize] before this returns true.
+  bool get isReady => _worker?.isReady ?? false;
+
+  /// Returns true if the detector has been initialized and is ready to use.
+  bool get isInitialized => isReady;
 
   /// Initializes the hand detector by loading TensorFlow Lite models.
   ///
-  /// Must be called before [detect] or [detectOnMat].
-  /// If already initialized, will dispose existing models and reinitialize.
+  /// Must be called before [detect] or [detectFromMat].
+  /// Calling [initialize] twice without [dispose] throws [StateError].
   Future<void> initialize() async {
-    if (_isInitialized) await dispose();
+    if (isReady) {
+      throw StateError('HandDetector already initialized');
+    }
 
-    await _initializeWith(
-      palmLoader: () => _palm.initialize(performanceConfig: performanceConfig),
-      landmarkLoader: () =>
-          _lm.initialize(performanceConfig: performanceConfig),
-      gestureLoader: (_) =>
-          _gestureRecognizer!.initialize(performanceConfig: performanceConfig),
+    const palmPath =
+        'packages/hand_detection/assets/models/hand_detection.tflite';
+    const landmarkPath =
+        'packages/hand_detection/assets/models/hand_landmark_full.tflite';
+
+    final assetFutures = <Future<ByteData>>[
+      rootBundle.load(palmPath),
+      rootBundle.load(landmarkPath),
+    ];
+
+    if (enableGestures) {
+      const embedderPath =
+          'packages/hand_detection/assets/models/gesture_embedder.tflite';
+      const classifierPath =
+          'packages/hand_detection/assets/models/canned_gesture_classifier.tflite';
+      assetFutures.add(rootBundle.load(embedderPath));
+      assetFutures.add(rootBundle.load(classifierPath));
+    }
+
+    final results = await Future.wait(assetFutures);
+
+    final palmBytes = results[0].buffer.asUint8List();
+    final landmarkBytes = results[1].buffer.asUint8List();
+
+    Uint8List? gestureEmbedderBytes;
+    Uint8List? gestureClassifierBytes;
+    if (enableGestures && results.length > 2) {
+      gestureEmbedderBytes = results[2].buffer.asUint8List();
+      gestureClassifierBytes = results[3].buffer.asUint8List();
+    }
+
+    await initializeFromBuffers(
+      palmDetectionBytes: palmBytes,
+      handLandmarkBytes: landmarkBytes,
+      gestureEmbedderBytes: gestureEmbedderBytes,
+      gestureClassifierBytes: gestureClassifierBytes,
     );
   }
 
   /// Initializes the hand detector from pre-loaded model bytes.
   ///
-  /// Used by [HandDetectorIsolate] to initialize within a background isolate
-  /// where Flutter asset loading is not available.
+  /// Used when asset loading from the main isolate is not available, or when
+  /// bytes have already been loaded. Spawns the background isolate with the
+  /// provided model data.
   ///
   /// Parameters:
   /// - [palmDetectionBytes]: Raw bytes of the palm detection TFLite model
@@ -168,59 +264,42 @@ class HandDetector {
     Uint8List? gestureEmbedderBytes,
     Uint8List? gestureClassifierBytes,
   }) async {
-    if (_isInitialized) await dispose();
-
-    await _initializeWith(
-      palmLoader: () => _palm.initializeFromBuffer(
-        palmDetectionBytes,
-        performanceConfig: performanceConfig,
-      ),
-      landmarkLoader: () => _lm.initializeFromBuffer(
-        handLandmarkBytes,
-        performanceConfig: performanceConfig,
-      ),
-      gestureLoader:
-          gestureEmbedderBytes != null && gestureClassifierBytes != null
-              ? (_) => _gestureRecognizer!.initializeFromBuffers(
-                    embedderBytes: gestureEmbedderBytes,
-                    classifierBytes: gestureClassifierBytes,
-                    performanceConfig: performanceConfig,
-                  )
-              : null,
-    );
-  }
-
-  Future<void> _initializeWith({
-    required Future<void> Function() palmLoader,
-    required Future<void> Function() landmarkLoader,
-    Future<void> Function(GestureRecognizer)? gestureLoader,
-  }) async {
-    await palmLoader();
-    await landmarkLoader();
-
-    if (_gestureRecognizer != null && gestureLoader != null) {
-      await gestureLoader(_gestureRecognizer!);
+    if (isReady) {
+      throw StateError('HandDetector already initialized');
     }
 
-    _isInitialized = true;
-  }
+    final worker = _HandDetectorWorker();
 
-  /// Returns true if the detector has been initialized and is ready to use.
-  bool get isInitialized => _isInitialized;
-
-  /// Releases all resources used by the detector.
-  Future<void> dispose() async {
-    await _palm.dispose();
-    await _lm.dispose();
-    if (_gestureRecognizer != null) {
-      await _gestureRecognizer!.dispose();
+    try {
+      await worker.initialize(
+        palmDetectionBytes: palmDetectionBytes,
+        handLandmarkBytes: handLandmarkBytes,
+        gestureEmbedderBytes: gestureEmbedderBytes,
+        gestureClassifierBytes: gestureClassifierBytes,
+        mode: mode,
+        landmarkModel: landmarkModel,
+        detectorConf: detectorConf,
+        maxDetections: maxDetections,
+        minLandmarkScore: minLandmarkScore,
+        interpreterPoolSize: interpreterPoolSize,
+        performanceConfig: performanceConfig,
+        enableGestures: enableGestures,
+        gestureMinConfidence: gestureMinConfidence,
+      );
+    } catch (e) {
+      if (worker.isReady) {
+        await worker.dispose();
+      }
+      rethrow;
     }
-    _isInitialized = false;
+
+    _worker = worker;
   }
 
   /// Detects hands in an image from raw bytes.
   ///
-  /// Decodes the image bytes using OpenCV and performs hand detection.
+  /// Decodes the image bytes using OpenCV and performs hand detection in a
+  /// background isolate.
   ///
   /// Parameters:
   /// - [imageBytes]: Raw image data in a supported format (JPEG, PNG, etc.)
@@ -230,18 +309,20 @@ class HandDetector {
   ///
   /// Throws [StateError] if called before [initialize].
   Future<List<Hand>> detect(List<int> imageBytes) async {
-    if (!_isInitialized) {
+    if (!isReady) {
       throw StateError(
           'HandDetector not initialized. Call initialize() first.');
     }
     try {
-      final mat = cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
-      if (mat.isEmpty) return <Hand>[];
-      try {
-        return await detectOnMat(mat);
-      } finally {
-        mat.dispose();
-      }
+      final Uint8List bytes =
+          imageBytes is Uint8List ? imageBytes : Uint8List.fromList(imageBytes);
+      final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
+        'detect',
+        {
+          'bytes': TransferableTypedData.fromList([bytes]),
+        },
+      );
+      return _deserializeHands(result);
     } catch (e) {
       // Intentionally broad: imdecode can throw on malformed bytes; treat any
       // decode/pipeline failure as "no hands detected" for production robustness.
@@ -249,250 +330,290 @@ class HandDetector {
     }
   }
 
-  /// Detects hands in an OpenCV Mat image.
+  /// Detects hands in an image file at [path].
   ///
-  /// Performs the two-stage detection pipeline:
-  /// 1. Detects palms using SSD-based detector with rotation rectangles
-  /// 2. Crops and rotates hand regions, then extracts 21 landmarks per hand
+  /// Convenience wrapper that reads the file and calls [detect].
+  /// Not available on Flutter Web (uses `dart:io`).
   ///
-  /// Parameters:
-  /// - [image]: An OpenCV Mat in BGR format
+  /// Throws [StateError] if [initialize] has not been called successfully.
+  /// Throws [FileSystemException] if the file cannot be read.
+  Future<List<Hand>> detectFromFilepath(String path) async {
+    final bytes = await File(path).readAsBytes();
+    return detect(bytes);
+  }
+
+  /// Detects hands in a pre-decoded [cv.Mat] image.
   ///
-  /// Returns a list of [Hand] objects, one per detected hand.
-  /// Each hand contains:
-  /// - A bounding box in original image coordinates
-  /// - A confidence score (0.0-1.0)
-  /// - 21 landmarks (if [mode] is [HandMode.boxesAndLandmarks])
-  /// - Handedness (left or right)
-  ///
-  /// Note: The caller is responsible for disposing the input Mat after use.
+  /// The Mat's raw pixel data is extracted and transferred to the background
+  /// isolate using zero-copy [TransferableTypedData]. The original Mat is NOT
+  /// disposed by this method — the caller is responsible for disposal.
   ///
   /// Throws [StateError] if called before [initialize].
-  Future<List<Hand>> detectOnMat(cv.Mat image) async {
-    if (!_isInitialized) {
+  Future<List<Hand>> detectFromMat(cv.Mat image) {
+    if (!isReady) {
       throw StateError(
           'HandDetector not initialized. Call initialize() first.');
     }
+    final int rows = image.rows;
+    final int cols = image.cols;
+    final int type = image.type.value;
+    final Uint8List data = image.data;
+    return detectFromMatBytes(data, width: cols, height: rows, matType: type);
+  }
 
-    final List<PalmDetection> palms = await _palm.detectOnMat(image);
+  /// Detects hands from raw pixel bytes without constructing a [cv.Mat] first.
+  ///
+  /// This avoids the overhead of building a Mat on the calling thread —
+  /// the bytes are transferred via zero-copy [TransferableTypedData] and the
+  /// Mat is reconstructed inside the background isolate.
+  ///
+  /// Parameters:
+  /// - [bytes]: Raw pixel data (typically BGR format, 3 bytes per pixel)
+  /// - [width]: Image width in pixels
+  /// - [height]: Image height in pixels
+  /// - [matType]: OpenCV MatType value (default: CV_8UC3 = 16 for BGR)
+  ///
+  /// Returns a list of [Hand] objects, one per detected hand.
+  ///
+  /// Throws [StateError] if called before [initialize].
+  Future<List<Hand>> detectFromMatBytes(
+    Uint8List bytes, {
+    required int width,
+    required int height,
+    int matType = 16,
+  }) async {
+    if (!isReady) {
+      throw StateError(
+          'HandDetector not initialized. Call initialize() first.');
+    }
+    final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
+      'detectMat',
+      {
+        'bytes': TransferableTypedData.fromList([bytes]),
+        'width': width,
+        'height': height,
+        'matType': matType,
+      },
+    );
+    return _deserializeHands(result);
+  }
 
-    assert(() {
-      for (int i = 1; i < palms.length; i++) {
-        if (palms[i].score > palms[i - 1].score) {
-          throw StateError(
-              'NMS output not sorted by score: ${palms[i - 1].score} < ${palms[i].score}');
-        }
+  /// Detects hands in an OpenCV Mat image.
+  ///
+  /// Deprecated: Use [detectFromMat] instead.
+  @Deprecated('Use detectFromMat instead. Will be removed in a future release.')
+  Future<List<Hand>> detectOnMat(cv.Mat image) => detectFromMat(image);
+
+  /// Detects hands from raw pixel bytes without constructing a [cv.Mat] first.
+  ///
+  /// Deprecated: Use [detectFromMatBytes] instead.
+  @Deprecated(
+      'Use detectFromMatBytes instead. Will be removed in a future release.')
+  Future<List<Hand>> detectOnMatBytes(
+    Uint8List bytes, {
+    required int width,
+    required int height,
+    int matType = 16,
+  }) =>
+      detectFromMatBytes(bytes, width: width, height: height, matType: matType);
+
+  /// Releases all resources used by the detector.
+  Future<void> dispose() async {
+    await _worker?.dispose();
+    _worker = null;
+  }
+
+  List<Hand> _deserializeHands(List<dynamic> result) => result
+      .map((map) => Hand.fromMap(Map<String, dynamic>.from(map as Map)))
+      .toList();
+
+  /// Isolate entry point: initializes [HandDetectorCore] and listens for detection requests.
+  @pragma('vm:entry-point')
+  static void _isolateEntry(_IsolateStartupData data) async {
+    final SendPort mainSendPort = data.sendPort;
+    final ReceivePort workerReceivePort = ReceivePort();
+
+    HandDetectorCore? core;
+
+    try {
+      final palmBytes = data.palmDetectionBytes.materialize().asUint8List();
+      final landmarkBytes = data.handLandmarkBytes.materialize().asUint8List();
+
+      Uint8List? embedderBytes;
+      Uint8List? classifierBytes;
+      if (data.gestureEmbedderBytes != null) {
+        embedderBytes = data.gestureEmbedderBytes!.materialize().asUint8List();
       }
-      return true;
-    }());
+      if (data.gestureClassifierBytes != null) {
+        classifierBytes =
+            data.gestureClassifierBytes!.materialize().asUint8List();
+      }
 
-    final limitedPalms =
-        palms.length > maxDetections ? palms.sublist(0, maxDetections) : palms;
+      final mode = HandMode.values.firstWhere(
+        (m) => m.name == data.modeName,
+      );
+      final performanceMode = PerformanceMode.values.firstWhere(
+        (m) => m.name == data.performanceModeName,
+      );
 
-    if (mode == HandMode.boxes) {
-      return _palmsToHands(image, limitedPalms);
+      core = HandDetectorCore();
+      await core.initializeFromBuffers(
+        palmDetectionBytes: palmBytes,
+        handLandmarkBytes: landmarkBytes,
+        gestureEmbedderBytes: embedderBytes,
+        gestureClassifierBytes: classifierBytes,
+        mode: mode,
+        maxDetections: data.maxDetections,
+        minLandmarkScore: data.minLandmarkScore,
+        detectorConf: data.detectorConf,
+        interpreterPoolSize: data.interpreterPoolSize,
+        performanceConfig: PerformanceConfig(
+          mode: performanceMode,
+          numThreads: data.numThreads,
+        ),
+        enableGestures: data.enableGestures,
+        gestureMinConfidence: data.gestureMinConfidence,
+      );
+
+      mainSendPort.send(workerReceivePort.sendPort);
+    } catch (e, st) {
+      mainSendPort.send({
+        'error': 'Hand detection isolate initialization failed: $e\n$st',
+      });
+      return;
     }
 
-    final cropDataList = <_HandCropData>[];
-    for (final palm in limitedPalms) {
-      final cropped = ImageUtils.rotateAndCropRectangle(image, palm);
-      if (cropped == null) {
-        continue;
-      }
+    workerReceivePort.listen((message) async {
+      if (message is! Map) return;
 
-      final (:centerX, :centerY, :size) = _palmCoordinates(palm, image);
+      final int? id = message['id'] as int?;
+      final String? op = message['op'] as String?;
 
-      cropDataList.add(_HandCropData(
-        palm: palm,
-        croppedHand: cropped,
-        rotation: palm.rotation,
-        centerX: centerX,
-        centerY: centerY,
-        cropSize: size,
-      ));
-    }
+      if (id == null || op == null) return;
 
-    final futures = cropDataList.map((data) async {
       try {
-        return await _lm.run(data.croppedHand);
-      } catch (_) {
-        return null;
+        switch (op) {
+          case 'detect':
+            if (core == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'HandDetectorCore not initialized in isolate',
+              });
+              return;
+            }
+            final ByteBuffer bb =
+                (message['bytes'] as TransferableTypedData).materialize();
+            final Uint8List imageBytes = bb.asUint8List();
+            final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+            if (mat.isEmpty) {
+              mat.dispose();
+              mainSendPort.send({'id': id, 'result': <dynamic>[]});
+              return;
+            }
+            try {
+              final hands = await core!.detectDirect(mat);
+              mainSendPort.send({
+                'id': id,
+                'result': hands.map((h) => h.toMap()).toList(),
+              });
+            } finally {
+              mat.dispose();
+            }
+
+          case 'detectMat':
+            if (core == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'HandDetectorCore not initialized in isolate',
+              });
+              return;
+            }
+            final ByteBuffer bb =
+                (message['bytes'] as TransferableTypedData).materialize();
+            final Uint8List matBytes = bb.asUint8List();
+            final int width = message['width'] as int;
+            final int height = message['height'] as int;
+            final int matTypeValue = message['matType'] as int;
+            final matType = cv.MatType(matTypeValue);
+            final mat = cv.Mat.fromList(height, width, matType, matBytes);
+            try {
+              final hands = await core!.detectDirect(mat);
+              mainSendPort.send({
+                'id': id,
+                'result': hands.map((h) => h.toMap()).toList(),
+              });
+            } finally {
+              mat.dispose();
+            }
+
+          case 'dispose':
+            await core?.dispose();
+            core = null;
+            workerReceivePort.close();
+        }
+      } catch (e, st) {
+        mainSendPort.send({'id': id, 'error': '$e\n$st'});
       }
-    }).toList();
+    });
+  }
+}
 
-    final allLandmarks = await Future.wait(futures);
+class _HandDetectorWorker extends IsolateWorkerBase {
+  @override
+  String get workerDisposeOp => 'dispose';
 
-    final results = await _buildResults(image, cropDataList, allLandmarks);
-
-    for (final data in cropDataList) {
-      data.dispose();
+  Future<void> initialize({
+    required Uint8List palmDetectionBytes,
+    required Uint8List handLandmarkBytes,
+    Uint8List? gestureEmbedderBytes,
+    Uint8List? gestureClassifierBytes,
+    required HandMode mode,
+    required HandLandmarkModel landmarkModel,
+    required double detectorConf,
+    required int maxDetections,
+    required double minLandmarkScore,
+    required int interpreterPoolSize,
+    required PerformanceConfig performanceConfig,
+    required bool enableGestures,
+    required double gestureMinConfidence,
+  }) async {
+    TransferableTypedData? gestureEmbedderData;
+    TransferableTypedData? gestureClassifierData;
+    if (gestureEmbedderBytes != null) {
+      gestureEmbedderData =
+          TransferableTypedData.fromList([gestureEmbedderBytes]);
+    }
+    if (gestureClassifierBytes != null) {
+      gestureClassifierData =
+          TransferableTypedData.fromList([gestureClassifierBytes]);
     }
 
-    return results;
-  }
-
-  /// Converts palm detections to Hand objects (boxes only mode).
-  List<Hand> _palmsToHands(
-    cv.Mat image,
-    List<PalmDetection> palms,
-  ) {
-    final results = <Hand>[];
-
-    for (final palm in palms) {
-      final (:centerX, :centerY, :size) = _palmCoordinates(palm, image);
-      final halfSize = size / 2;
-
-      results.add(Hand(
-        boundingBox: _clampedBoundingBox(
-            centerX, centerY, halfSize, image.cols, image.rows),
-        score: palm.score,
-        landmarks: const [],
-        imageWidth: image.cols,
-        imageHeight: image.rows,
-        handedness: null,
-        rotation: palm.rotation,
-        rotatedCenterX: centerX,
-        rotatedCenterY: centerY,
-        rotatedSize: size,
-      ));
-    }
-
-    return results;
-  }
-
-  /// Builds final Hand results with transformed landmark coordinates.
-  ///
-  /// Landmarks from the model runner are already in crop pixel space
-  /// (after unpadding/rescaling to match Python's postprocessing).
-  /// This method applies rotation and translation to transform them
-  /// to original image coordinates.
-  ///
-  /// If gesture recognition is enabled, also runs gesture classification
-  /// on each detected hand.
-  Future<List<Hand>> _buildResults(
-    cv.Mat image,
-    List<_HandCropData> cropDataList,
-    List<HandLandmarks?> allLandmarks,
-  ) async {
-    final results = <Hand>[];
-
-    for (int i = 0; i < cropDataList.length; i++) {
-      final data = cropDataList[i];
-      final lms = allLandmarks[i];
-
-      if (lms == null || lms.score < minLandmarkScore) continue;
-
-      final transformedLandmarks = <HandLandmark>[];
-      final cropW = data.croppedHand.cols.toDouble();
-      final cropH = data.croppedHand.rows.toDouble();
-
-      final cosR = math.cos(data.rotation);
-      final sinR = math.sin(data.rotation);
-
-      for (final lm in lms.landmarks) {
-        final xCrop = lm.x;
-        final yCrop = lm.y;
-
-        final (xOrig, yOrig) = _transformToOriginal(
-          xCrop,
-          yCrop,
-          cropW,
-          cropH,
-          cosR,
-          sinR,
-          data.centerX,
-          data.centerY,
-        );
-
-        transformedLandmarks.add(HandLandmark(
-          type: lm.type,
-          x: xOrig.clamp(0, image.cols.toDouble()),
-          y: yOrig.clamp(0, image.rows.toDouble()),
-          z: lm.z,
-          visibility: lm.visibility,
-        ));
-      }
-
-      GestureResult? gesture;
-      if (_gestureRecognizer != null && _gestureRecognizer!.isInitialized) {
-        gesture = await _gestureRecognizer!.recognize(
-          landmarks: transformedLandmarks,
-          worldLandmarks: lms.worldLandmarks,
-          handedness: lms.handedness,
-          imageWidth: image.cols,
-          imageHeight: image.rows,
-        );
-      }
-
-      final halfSize = data.cropSize / 2;
-
-      results.add(Hand(
-        boundingBox: _clampedBoundingBox(
-            data.centerX, data.centerY, halfSize, image.cols, image.rows),
-        score: data.palm.score,
-        landmarks: transformedLandmarks,
-        imageWidth: image.cols,
-        imageHeight: image.rows,
-        handedness: lms.handedness,
-        rotation: data.rotation,
-        rotatedCenterX: data.centerX,
-        rotatedCenterY: data.centerY,
-        rotatedSize: data.cropSize,
-        gesture: gesture,
-      ));
-    }
-
-    return results;
-  }
-
-  /// Transforms coordinates from crop space to original image space.
-  ///
-  /// Applies inverse rotation and translation to convert landmark
-  /// coordinates from the rotated crop back to the original image.
-  ///
-  /// The forward transform in rotateAndCropRectangle applies R(+rotation) to the image.
-  /// To match Python (hand_landmark.py:357), the inverse applies R(-rotation) to undo it.
-  ///
-  /// Parameters [cosR] and [sinR] are precomputed cos/sin of the rotation angle
-  /// to avoid redundant trig calls when transforming multiple landmarks.
-  (double, double) _transformToOriginal(
-    double xCrop,
-    double yCrop,
-    double cropW,
-    double cropH,
-    double cosR,
-    double sinR,
-    double centerX,
-    double centerY,
-  ) {
-    final xRel = xCrop - cropW / 2;
-    final yRel = yCrop - cropH / 2;
-
-    final xRot = xRel * cosR - yRel * sinR;
-    final yRot = xRel * sinR + yRel * cosR;
-
-    final xOrig = xRot + centerX;
-    final yOrig = yRot + centerY;
-
-    return (xOrig, yOrig);
-  }
-
-  ({double centerX, double centerY, double size}) _palmCoordinates(
-    PalmDetection palm,
-    cv.Mat image,
-  ) {
-    final (:cx, :cy, :size) =
-        ImageUtils.palmCoordinates(palm, image.cols, image.rows);
-    return (centerX: cx, centerY: cy, size: size);
-  }
-
-  BoundingBox _clampedBoundingBox(double centerX, double centerY,
-      double halfSize, int imgWidth, int imgHeight) {
-    return BoundingBox.ltrb(
-      (centerX - halfSize).clamp(0, imgWidth.toDouble()),
-      (centerY - halfSize).clamp(0, imgHeight.toDouble()),
-      (centerX + halfSize).clamp(0, imgWidth.toDouble()),
-      (centerY + halfSize).clamp(0, imgHeight.toDouble()),
+    await initWorker(
+      (sendPort) => Isolate.spawn(
+        HandDetector._isolateEntry,
+        _IsolateStartupData(
+          sendPort: sendPort,
+          palmDetectionBytes:
+              TransferableTypedData.fromList([palmDetectionBytes]),
+          handLandmarkBytes:
+              TransferableTypedData.fromList([handLandmarkBytes]),
+          gestureEmbedderBytes: gestureEmbedderData,
+          gestureClassifierBytes: gestureClassifierData,
+          modeName: mode.name,
+          landmarkModelName: landmarkModel.name,
+          detectorConf: detectorConf,
+          maxDetections: maxDetections,
+          minLandmarkScore: minLandmarkScore,
+          interpreterPoolSize: interpreterPoolSize,
+          performanceModeName: performanceConfig.mode.name,
+          numThreads: performanceConfig.numThreads,
+          enableGestures: enableGestures,
+          gestureMinConfidence: gestureMinConfidence,
+        ),
+        debugName: 'HandDetector',
+      ),
+      timeout: const Duration(seconds: 30),
+      timeoutMessage: 'Hand detection isolate initialization timed out',
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
@@ -9,8 +11,20 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('HandDetector returns empty when cv.imdecode fails', () async {
+    final palmBytes = Uint8List.fromList(
+      File('${Directory.current.path}/assets/models/hand_detection.tflite')
+          .readAsBytesSync(),
+    );
+    final landmarkBytes = Uint8List.fromList(
+      File('${Directory.current.path}/assets/models/hand_landmark_full.tflite')
+          .readAsBytesSync(),
+    );
+
     final detector = HandDetector();
-    await detector.initialize();
+    await detector.initializeFromBuffers(
+      palmDetectionBytes: palmBytes,
+      handLandmarkBytes: landmarkBytes,
+    );
 
     // Invalid bytes should fail to decode
     final List<Hand> results = await detector.detect(const <int>[1, 2, 3]);

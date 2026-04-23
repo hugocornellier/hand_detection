@@ -1,6 +1,6 @@
-// ignore_for_file: avoid_print
+// ignore_for_file: avoid_print, deprecated_member_use
 
-// Benchmark tests for HandDetectorIsolate.
+// Benchmark tests for HandDetectorIsolate (deprecated — intentional coverage).
 //
 // Unlike hand_detector_benchmark_test.dart (which exercises HandDetector
 // directly), this benchmark targets HandDetectorIsolate.spawn() to measure the

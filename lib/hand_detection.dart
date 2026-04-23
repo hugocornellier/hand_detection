@@ -14,6 +14,10 @@
 /// ```dart
 /// import 'package:hand_detection/hand_detection.dart';
 ///
+/// // One-step construction
+/// final detector = await HandDetector.create();
+///
+/// // Or two-step, if you need to configure between construction and init
 /// final detector = HandDetector();
 /// await detector.initialize();
 ///
@@ -32,8 +36,7 @@
 ///
 /// **Gesture Recognition:**
 /// ```dart
-/// final detector = HandDetector(enableGestures: true);
-/// await detector.initialize();
+/// final detector = await HandDetector.create(enableGestures: true);
 ///
 /// final hands = await detector.detect(imageBytes);
 /// for (final hand in hands) {
@@ -45,8 +48,8 @@
 /// ```
 ///
 /// **Main Classes:**
-/// - [HandDetectorIsolate]: Background isolate wrapper for hand detection
-/// - [HandDetector]: Main API for hand detection
+/// - [HandDetector]: Main API for hand detection (runs inference in a background isolate)
+/// - [HandDetectorIsolate]: Deprecated — kept for backward compatibility; prefer [HandDetector]
 /// - [Hand]: Detected hand with bounding box, landmarks, handedness, and gesture
 /// - [HandLandmark]: Single keypoint with 3D coordinates (x, y, z) and visibility
 /// - [HandLandmarkType]: Enum of 21 hand landmarks (wrist, finger joints, tips)
@@ -81,7 +84,7 @@ export 'src/isolate/hand_detector_isolate.dart' show HandDetectorIsolate;
 export 'src/models/palm_detector.dart' show PalmDetection;
 export 'src/dart_registration.dart';
 
-// Re-export cv.Mat for users who want to use detectOnMat directly
+// Re-export cv.Mat for users who want to use detectFromMat directly
 export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
 
 export 'package:flutter_litert/flutter_litert.dart'

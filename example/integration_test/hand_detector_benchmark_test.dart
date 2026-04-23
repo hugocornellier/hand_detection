@@ -153,12 +153,11 @@ void main() {
           print('  - $img');
         }
 
-        final detector = HandDetector(
+        final detector = await HandDetector.create(
           mode: HandMode.boxesAndLandmarks,
           landmarkModel: HandLandmarkModel.full,
           performanceConfig: const PerformanceConfig.xnnpack(),
         );
-        await detector.initialize();
 
         print('\n${'=' * 60}');
         print('BENCHMARK: Hand Detection with cv.Mat + XNNPACK');
@@ -179,7 +178,7 @@ void main() {
             final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
             final stopwatch = Stopwatch()..start();
-            final results = await detector.detectOnMat(mat);
+            final results = await detector.detectFromMat(mat);
             stopwatch.stop();
 
             mat.dispose();
@@ -209,7 +208,7 @@ void main() {
             'mode': 'boxesAndLandmarks',
             'landmark_model': 'full',
             'performance_config': 'xnnpack',
-            'api': 'detectOnMat',
+            'api': 'detectFromMat',
             'iterations': iterations,
             'sample_images': sampleImages.length,
           },
@@ -224,12 +223,11 @@ void main() {
     test(
       'Benchmark: Live camera simulation (fresh Mat each frame)',
       () async {
-        final detector = HandDetector(
+        final detector = await HandDetector.create(
           mode: HandMode.boxesAndLandmarks,
           landmarkModel: HandLandmarkModel.full,
           performanceConfig: const PerformanceConfig.xnnpack(),
         );
-        await detector.initialize();
 
         print('\n${'=' * 60}');
         print('BENCHMARK: Live Camera Simulation');
@@ -243,7 +241,7 @@ void main() {
         // Warm-up with fresh Mats
         for (int i = 0; i < 5; i++) {
           final warmupMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-          await detector.detectOnMat(warmupMat);
+          await detector.detectFromMat(warmupMat);
           warmupMat.dispose();
         }
 
@@ -252,7 +250,7 @@ void main() {
         final stopwatch = Stopwatch()..start();
         for (int i = 0; i < frames; i++) {
           final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-          await detector.detectOnMat(mat);
+          await detector.detectFromMat(mat);
           mat.dispose();
         }
         stopwatch.stop();

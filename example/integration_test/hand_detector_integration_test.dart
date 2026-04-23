@@ -3,7 +3,7 @@
 // These tests cover:
 // - Initialization and disposal
 // - Detection with real sample images
-// - detect() and detectOnMat() methods
+// - detect() and detectFromMat() methods
 // - Different model variants (lite, full, heavy)
 // - Different modes (boxes, boxesAndLandmarks)
 // - Landmark and bounding box access
@@ -13,7 +13,7 @@
 // - Error recovery
 // - detect() API consistency
 // - Result consistency / determinism
-// - HandDetectorIsolate
+// - Background isolate detection via HandDetector
 // - Landmark z-coordinate validation
 //
 // Run with: flutter test integration_test/
@@ -119,14 +119,14 @@ void main() {
     });
 
     testWidgets(
-        'should throw StateError when detectOnMat() called before initialize',
+        'should throw StateError when detectFromMat() called before initialize',
         (tester) async {
       final detector = HandDetector();
       final mat = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
 
       try {
         expect(
-          () => detector.detectOnMat(mat),
+          () => detector.detectFromMat(mat),
           throwsA(isA<StateError>().having(
             (e) => e.message,
             'message',
@@ -237,7 +237,7 @@ void main() {
     });
   });
 
-  group('HandDetector - detectOnMat() method', () {
+  group('HandDetector - detectFromMat() method', () {
     testWidgets('should work with pre-decoded image', (tester) async {
       final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
       await detector.initialize();
@@ -250,8 +250,7 @@ void main() {
 
       expect(mat.isEmpty, isFalse);
 
-      // Use detectOnMat instead of detect
-      final List<Hand> results = await detector.detectOnMat(mat);
+      final List<Hand> results = await detector.detectFromMat(mat);
 
       expect(results, isNotEmpty);
 
@@ -660,7 +659,7 @@ void main() {
   });
 
   group('HandDetector - detect() API Consistency', () {
-    testWidgets('should give same results from detect and detectOnMat',
+    testWidgets('should give same results from detect and detectFromMat',
         (tester) async {
       final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
       await detector.initialize();
@@ -674,7 +673,7 @@ void main() {
 
       try {
         final List<Hand> fromBytes = await detector.detect(bytes);
-        final List<Hand> fromMat = await detector.detectOnMat(mat);
+        final List<Hand> fromMat = await detector.detectFromMat(mat);
 
         expect(fromBytes.length, fromMat.length);
 
@@ -703,8 +702,8 @@ void main() {
       expect(mat.isEmpty, isFalse);
 
       try {
-        final List<Hand> first = await detector.detectOnMat(mat);
-        final List<Hand> second = await detector.detectOnMat(mat);
+        final List<Hand> first = await detector.detectFromMat(mat);
+        final List<Hand> second = await detector.detectFromMat(mat);
 
         expect(first.length, second.length);
 
@@ -730,18 +729,18 @@ void main() {
     });
   });
 
-  group('HandDetectorIsolate', () {
-    testWidgets('should detect hands via isolate', (tester) async {
-      final isolate = await HandDetectorIsolate.spawn(
+  group('HandDetector - isolate detection', () {
+    testWidgets('should detect hands in background isolate', (tester) async {
+      final detector = await HandDetector.create(
         mode: HandMode.boxesAndLandmarks,
         landmarkModel: HandLandmarkModel.full,
       );
-      expect(isolate.isReady, true);
+      expect(detector.isReady, true);
 
       final ByteData data = await rootBundle.load(
           'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
-      final List<Hand> results = await isolate.detectHands(bytes);
+      final List<Hand> results = await detector.detect(bytes);
 
       expect(results, isNotEmpty);
 
@@ -753,11 +752,12 @@ void main() {
         expect(hand.score, lessThanOrEqualTo(1.0));
       }
 
-      await isolate.dispose();
+      await detector.dispose();
     });
 
-    testWidgets('should detect hands from Mat via isolate', (tester) async {
-      final isolate = await HandDetectorIsolate.spawn(
+    testWidgets('should detect hands from Mat in background isolate',
+        (tester) async {
+      final detector = await HandDetector.create(
         mode: HandMode.boxesAndLandmarks,
         landmarkModel: HandLandmarkModel.full,
       );
@@ -769,7 +769,7 @@ void main() {
       expect(mat.isEmpty, isFalse);
 
       try {
-        final List<Hand> results = await isolate.detectHandsFromMat(mat);
+        final List<Hand> results = await detector.detectFromMat(mat);
 
         expect(results, isNotEmpty);
 
@@ -782,14 +782,14 @@ void main() {
         mat.dispose();
       }
 
-      await isolate.dispose();
+      await detector.dispose();
     });
 
-    testWidgets('should match main thread results', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
-
-      final isolate = await HandDetectorIsolate.spawn(
+    testWidgets('should produce consistent results across two detectors',
+        (tester) async {
+      final first =
+          await HandDetector.create(landmarkModel: HandLandmarkModel.full);
+      final second = await HandDetector.create(
         mode: HandMode.boxesAndLandmarks,
         landmarkModel: HandLandmarkModel.full,
       );
@@ -798,32 +798,31 @@ void main() {
           'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final List<Hand> mainResults = await detector.detect(bytes);
-      final List<Hand> isolateResults = await isolate.detectHands(bytes);
+      final List<Hand> firstResults = await first.detect(bytes);
+      final List<Hand> secondResults = await second.detect(bytes);
 
-      expect(mainResults.length, isolateResults.length);
+      expect(firstResults.length, secondResults.length);
 
-      for (int i = 0; i < mainResults.length; i++) {
-        expect(mainResults[i].score, closeTo(isolateResults[i].score, 1e-3),
-            reason: 'Score mismatch at index $i between main and isolate');
-        expect(mainResults[i].landmarks.length,
-            isolateResults[i].landmarks.length);
+      for (int i = 0; i < firstResults.length; i++) {
+        expect(firstResults[i].score, closeTo(secondResults[i].score, 1e-3),
+            reason: 'Score mismatch at index $i');
+        expect(firstResults[i].landmarks.length,
+            secondResults[i].landmarks.length);
       }
 
-      await detector.dispose();
-      await isolate.dispose();
+      await first.dispose();
+      await second.dispose();
     });
 
-    testWidgets('should support dispose and re-spawn', (tester) async {
-      final first = await HandDetectorIsolate.spawn(
+    testWidgets('should support dispose and re-create', (tester) async {
+      final first = await HandDetector.create(
         landmarkModel: HandLandmarkModel.full,
       );
       expect(first.isReady, true);
       await first.dispose();
       expect(first.isReady, false);
 
-      // Spawn a new isolate after the previous one was disposed
-      final second = await HandDetectorIsolate.spawn(
+      final second = await HandDetector.create(
         landmarkModel: HandLandmarkModel.full,
       );
       expect(second.isReady, true);
@@ -831,7 +830,7 @@ void main() {
       final ByteData data = await rootBundle.load(
           'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
-      final List<Hand> results = await second.detectHands(bytes);
+      final List<Hand> results = await second.detect(bytes);
 
       expect(results, isNotEmpty);
 
@@ -877,7 +876,7 @@ void main() {
         // Portrait: height > width
         expect(mat.rows, greaterThan(mat.cols));
 
-        final List<Hand> results = await detector.detectOnMat(mat);
+        final List<Hand> results = await detector.detectFromMat(mat);
 
         // Whether hands are detected or not, the call must complete without error.
         // If hands are found, verify coordinate bounds.

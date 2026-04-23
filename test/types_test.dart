@@ -1,9 +1,29 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hand_detection/hand_detection.dart';
-import 'package:hand_detection/src/types.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('HandDetector model version', () {
+    test('default modelVersion is non-empty and package-scoped', () {
+      expect(HandDetector.modelVersion, isNotEmpty);
+      expect(HandDetector.modelVersion, contains('hand_detection:2.2.0'));
+      expect(HandDetector.modelVersion, HandDetector.modelVersionFor());
+    });
+
+    test('modelVersionFor changes with detector configuration', () {
+      final base = HandDetector.modelVersionFor();
+
+      expect(
+        HandDetector.modelVersionFor(mode: HandMode.boxes),
+        isNot(base),
+      );
+      expect(
+        HandDetector.modelVersionFor(enableGestures: true),
+        isNot(base),
+      );
+    });
+  });
 
   group('PerformanceConfig', () {
     test('disabled mode has disabled PerformanceMode', () {

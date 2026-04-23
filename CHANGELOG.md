@@ -1,3 +1,17 @@
+## 2.2.0
+
+* `HandDetector` now runs all TFLite inference in a dedicated background isolate automatically, keeping the UI thread free.
+* Deprecate `HandDetectorIsolate`: use `HandDetector` directly. `HandDetectorIsolate` is kept as a thin wrapper for backward compatibility and will be removed in a future release.
+* Add `HandDetector.create({...})` static factory for one-step construction and initialization (mirrors `FaceDetector.create`).
+* Add `detectFromFilepath(String path)` convenience method.
+* Add `detectFromMatBytes(Uint8List, {required int width, required int height, int matType})` fast path: transfers raw pixel bytes to the background isolate via zero-copy `TransferableTypedData`, avoiding `cv.Mat` construction on the calling thread.
+* Rename `detectOnMat` to `detectFromMat` and `detectOnMatBytes` to `detectFromMatBytes` for naming parity with `face_detection_tflite`; old names kept as deprecated aliases.
+* Update example app to use `HandDetector.create()` instead of `HandDetectorIsolate.spawn()`.
+
+## 2.1.2
+
+* Add public `HandDetector.modelVersion` and `HandDetector.modelVersionFor(...)` APIs for downstream cache invalidation.
+
 ## 2.1.1
 
 * Fix iOS camera preview lifecycle in example

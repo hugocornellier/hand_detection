@@ -681,7 +681,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isImageStreamStarted = false;
   int _cameraGeneration = 0;
   bool _isDisposing = false;
-  HandDetectorIsolate? _handDetectorIsolate;
+  HandDetector? _handDetector;
   int _maxHands = 2;
   bool _enableGestures = true;
 
@@ -731,7 +731,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _initializeHandDetector() async {
     try {
-      _handDetectorIsolate = await HandDetectorIsolate.spawn(
+      _handDetector = await HandDetector.create(
         mode: HandMode.boxesAndLandmarks,
         landmarkModel: HandLandmarkModel.full,
         detectorConf: 0.6,
@@ -764,8 +764,8 @@ class _CameraScreenState extends State<CameraScreen> {
     });
 
     // Dispose old detector and create new one
-    _handDetectorIsolate?.dispose();
-    _handDetectorIsolate = null;
+    _handDetector?.dispose();
+    _handDetector = null;
     await _initializeHandDetector();
   }
 
@@ -1110,7 +1110,7 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     // Skip if already processing
-    if (_isProcessing || !_isInitialized || _handDetectorIsolate == null) {
+    if (_isProcessing || !_isInitialized || _handDetector == null) {
       return;
     }
 
@@ -1118,7 +1118,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
     try {
       cv.Mat? mat = await _convertCameraImageToMat(image);
-      if (mat == null || _handDetectorIsolate == null) {
+      if (mat == null || _handDetector == null) {
         _isProcessing = false;
         return;
       }
@@ -1144,8 +1144,7 @@ class _CameraScreenState extends State<CameraScreen> {
       final stopwatch = Stopwatch()..start();
 
       // Run hand detection in background isolate
-      final List<Hand> hands =
-          await _handDetectorIsolate!.detectHandsFromMat(mat);
+      final List<Hand> hands = await _handDetector!.detectFromMat(mat);
 
       stopwatch.stop();
 
@@ -1178,7 +1177,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (controller != null) {
       unawaited(_disposeController(controller, stopStream: wasStreaming));
     }
-    _handDetectorIsolate?.dispose();
+    _handDetector?.dispose();
     super.dispose();
   }
 

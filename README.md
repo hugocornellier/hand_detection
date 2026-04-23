@@ -34,8 +34,7 @@ import 'dart:io';
 import 'package:hand_detection/hand_detection.dart';
 
 Future main() async {
-  HandDetector detector = HandDetector();
-  await detector.initialize();
+  final detector = await HandDetector.create();
 
   final imageBytes = await File('path/to/image.jpg').readAsBytes();
   List<Hand> hands = await detector.detect(imageBytes);
@@ -75,47 +74,43 @@ No configuration needed, just call `initialize()` and you get the optimal perfor
 
 ```dart
 // Auto mode (default), optimal for each platform
-await detector.initialize();
+final detector = await HandDetector.create();
 
 // Force XNNPACK (all native platforms)
-final detector = HandDetector(
+final detector = await HandDetector.create(
   performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
 );
-await detector.initialize();
 
 // Force GPU delegate (iOS recommended, Android experimental)
-final detector = HandDetector(
+final detector = await HandDetector.create(
   performanceConfig: PerformanceConfig.gpu(),
 );
-await detector.initialize();
 
 // CPU-only (maximum compatibility)
-final detector = HandDetector(
+final detector = await HandDetector.create(
   performanceConfig: PerformanceConfig.disabled,
 );
-await detector.initialize();
 ```
 
 ### Advanced: Direct Mat Input
 
-For live camera streams, you can bypass image encoding/decoding entirely by using `detectOnMat()`:
+For live camera streams, you can bypass image encoding/decoding entirely by using `detectFromMat()`:
 
 ```dart
 import 'package:hand_detection/hand_detection.dart';
 
 Future<void> processFrame(Mat frame) async {
-  final detector = HandDetector();
-  await detector.initialize();
+  final detector = await HandDetector.create();
 
   // Direct Mat input, fastest for video streams
-  final hands = await detector.detectOnMat(frame);
+  final hands = await detector.detectFromMat(frame);
 
   frame.dispose(); // always dispose Mats after use
   await detector.dispose();
 }
 ```
 
-**When to use `detectOnMat()`:**
+**When to use `detectFromMat()`:**
 - Live camera streams where frames are already in memory
 - When you need to preprocess images with OpenCV before detection
 - Maximum throughput scenarios (avoids JPEG encode/decode overhead)
