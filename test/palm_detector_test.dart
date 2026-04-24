@@ -437,7 +437,7 @@ void main() {
 
     test('detects palm in hand image', () async {
       final imageBytes = File(
-        '${Directory.current.path}/assets/samples/istockphoto-462908027-612x612.jpg',
+        '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
       ).readAsBytesSync();
       final mat = cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
 
@@ -467,7 +467,7 @@ void main() {
 
     test('detects multiple palms in two-hands image', () async {
       final imageBytes = File(
-        '${Directory.current.path}/assets/samples/2-hands.png',
+        '${Directory.current.path}/example/assets/samples/2-hands.png',
       ).readAsBytesSync();
       final mat = cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
 
@@ -481,7 +481,7 @@ void main() {
 
     test('NMS returns palms sorted by score descending', () async {
       final imageBytes = File(
-        '${Directory.current.path}/assets/samples/2-hands.png',
+        '${Directory.current.path}/example/assets/samples/2-hands.png',
       ).readAsBytesSync();
       final mat = cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
 
@@ -532,7 +532,7 @@ void main() {
 
     test('palm detections have valid rotation', () async {
       final imageBytes = File(
-        '${Directory.current.path}/assets/samples/istockphoto-462908027-612x612.jpg',
+        '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
       ).readAsBytesSync();
       final mat = cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
 
@@ -570,7 +570,7 @@ void main() {
         () async {
       // Load a real hand image and transpose to make it portrait
       final imageBytes = File(
-        '${Directory.current.path}/assets/samples/istockphoto-462908027-612x612.jpg',
+        '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
       ).readAsBytesSync();
       final original =
           cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
@@ -593,7 +593,7 @@ void main() {
     test('landscape image (width > height) exercises landscape padding branch',
         () async {
       final imageBytes = File(
-        '${Directory.current.path}/assets/samples/istockphoto-462908027-612x612.jpg',
+        '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
       ).readAsBytesSync();
       final original =
           cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
@@ -613,7 +613,7 @@ void main() {
 
     test('square image exercises else branch (height == width)', () async {
       final imageBytes = File(
-        '${Directory.current.path}/assets/samples/istockphoto-462908027-612x612.jpg',
+        '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
       ).readAsBytesSync();
       final mat = cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
 
@@ -641,7 +641,7 @@ void main() {
       await strictDetector.initializeFromBuffer(modelBytes);
 
       final imageBytes = File(
-        '${Directory.current.path}/assets/samples/istockphoto-462908027-612x612.jpg',
+        '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
       ).readAsBytesSync();
       final mat = cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
 

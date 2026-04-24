@@ -94,7 +94,7 @@ final detector = await HandDetector.create(
 
 ### Advanced: Direct Mat Input
 
-For live camera streams, you can bypass image encoding/decoding entirely by using `detectFromMat()`:
+If you already have a decoded `cv.Mat` from another OpenCV pipeline, pass it directly:
 
 ```dart
 import 'package:hand_detection/hand_detection.dart';
@@ -102,7 +102,6 @@ import 'package:hand_detection/hand_detection.dart';
 Future<void> processFrame(Mat frame) async {
   final detector = await HandDetector.create();
 
-  // Direct Mat input, fastest for video streams
   final hands = await detector.detectFromMat(frame);
 
   frame.dispose(); // always dispose Mats after use
@@ -110,40 +109,45 @@ Future<void> processFrame(Mat frame) async {
 }
 ```
 
-**When to use `detectFromMat()`:**
-- Live camera streams where frames are already in memory
-- When you need to preprocess images with OpenCV before detection
-- Maximum throughput scenarios (avoids JPEG encode/decode overhead)
-
-**For all other cases**, use the standard `detect()` method with image bytes.
+For live camera streams, prefer `prepareCameraFrame` + `detectFromCameraFrame` (see below): it keeps `cvtColor` / `rotate` / downscale off the UI thread.
 
 ## Bounding Boxes
 
-The `boundingBox` property returns a `BoundingBox` object representing the hand bounding box in
-absolute pixel coordinates.
+The boundingBox property returns a BoundingBox object representing the hand bounding box in
+absolute pixel coordinates. The BoundingBox provides convenient access to corner points,
+dimensions (width and height), and the center point.
 
-### Accessing Bounding Box
+### Accessing Corners
 
 ```dart
 final BoundingBox boundingBox = hand.boundingBox;
 
-// Access edges
-final double left = boundingBox.left;
-final double top = boundingBox.top;
-final double right = boundingBox.right;
-final double bottom = boundingBox.bottom;
+// Access individual corners by name (each is a Point with x and y)
+final Point topLeft     = boundingBox.topLeft;       // Top-left corner
+final Point topRight    = boundingBox.topRight;      // Top-right corner
+final Point bottomRight = boundingBox.bottomRight;   // Bottom-right corner
+final Point bottomLeft  = boundingBox.bottomLeft;    // Bottom-left corner
 
-// Dimensions and center
-final double width = boundingBox.width;
-final double height = boundingBox.height;
-final Point center = boundingBox.center;
+// Access coordinates
+print('Top-left: (${topLeft.x}, ${topLeft.y})');
+```
 
-// Corner points (supports rotated boxes)
-final Point topLeft = boundingBox.topLeft;
-final List<Point> corners = boundingBox.corners;
+### Additional Bounding Box Parameters
 
-print('Box: ($left, $top) to ($right, $bottom)');
-print('Size: $width x $height, center: (${center.x}, ${center.y})');
+```dart
+final BoundingBox boundingBox = hand.boundingBox;
+
+// Access dimensions and center
+final double width  = boundingBox.width;     // Width in pixels
+final double height = boundingBox.height;    // Height in pixels
+final Point center = boundingBox.center;  // Center point
+
+// Access coordinates
+print('Size: ${width} x ${height}');
+print('Center: (${center.x}, ${center.y})');
+
+// Access all corners as a list (order: top-left, top-right, bottom-right, bottom-left)
+final List<Point> allCorners = boundingBox.corners;
 ```
 
 ## Hand Landmarks (21-Point)
@@ -290,7 +294,7 @@ final detector = HandDetector(
   maxDetections: 10,                     // Maximum hands to detect
   minLandmarkScore: 0.5,                 // Minimum landmark confidence (0.0-1.0)
   interpreterPoolSize: 1,                // TFLite interpreter pool size
-  performanceConfig: PerformanceConfig.disabled,   // Performance optimization (default: disabled)
+  performanceConfig: const PerformanceConfig(),    // Performance config (default: auto)
   enableGestures: false,                 // Enable gesture recognition
   gestureMinConfidence: 0.5,             // Minimum gesture confidence (0.0-1.0)
 );
@@ -298,119 +302,45 @@ final detector = HandDetector(
 
 ## Live Camera Detection
 
-For real-time hand detection with a camera feed, use `detectOnMat()` to avoid repeated JPEG encode/decode overhead:
+For real-time hand detection with a camera feed, use `detectFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop BGRA/RGBA layouts, and the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate: the UI thread is never blocked by OpenCV work.
 
 ```dart
 import 'package:camera/camera.dart';
 import 'package:hand_detection/hand_detection.dart';
 
-HandDetector detector = HandDetector(
-  performanceConfig: PerformanceConfig.xnnpack(),
-);
-await detector.initialize();
+final detector = await HandDetector.create();
 
 final cameras = await availableCameras();
-CameraController camera = CameraController(cameras.first, ResolutionPreset.medium);
+final camera = CameraController(
+  cameras.first,
+  ResolutionPreset.medium,
+  enableAudio: false,
+  imageFormatGroup: ImageFormatGroup.yuv420,
+);
 await camera.initialize();
 
 camera.startImageStream((CameraImage image) async {
-  // Convert CameraImage (YUV420) directly to Mat (BGR)
-  final Mat mat = convertCameraImageToMat(image); // see example app
-
-  // Detect hands using Mat for maximum performance
-  List<Hand> hands = await detector.detectOnMat(mat);
-
-  // Always dispose Mat after use
-  mat.dispose();
-
+  final hands = await detector.detectFromCameraImage(
+    image,
+    // rotation: CameraFrameRotation.cw90, // based on device orientation
+    maxDim: 640, // optional in-isolate downscale before inference
+  );
   // Process hands...
 });
 ```
 
-**Key points:**
-- Use `detectOnMat()` instead of `detect()` to bypass JPEG encoding/decoding
-- Convert YUV420 camera frames directly to BGR Mat format
-- Always call `mat.dispose()` after detection
-- Use `HandMode.boxes` for fastest real-time performance
+**Tips for camera detection:**
+- `detectFromCameraImage` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
+- Pass `rotation:` so the detector sees upright frames (Android back/front + device orientation logic); on iOS the camera plugin pre-rotates so this is often null.
+- Pass `maxDim:` (e.g. 640) to downscale in-isolate; the palm detection model internally resizes to 192×192, so full-res frames just waste IPC bandwidth.
+- Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
+- For advanced use (e.g. reusing a frame across multiple detectors), `prepareCameraFrame(...)` + `detectFromCameraFrame(...)` is the underlying two-step API.
 
-See the full [example app](https://pub.dev/packages/hand_detection/example) for complete implementation.
+See the full [example app](https://pub.dev/packages/hand_detection/example) for a production implementation including orientation handling, mirror handling, and frame throttling.
 
-## Background Isolate Detection
+## Background Processing
 
-For applications that require guaranteed non-blocking UI, use `HandDetectorIsolate`. This runs the **entire** detection pipeline in a background isolate, ensuring all processing happens off the main thread.
-
-```dart
-import 'package:hand_detection/hand_detection.dart';
-
-// Spawn isolate (loads models in background)
-final detector = await HandDetectorIsolate.spawn(
-  enableGestures: true,
-);
-
-// All detection runs in background isolate, UI never blocked
-final hands = await detector.detectHands(imageBytes);
-
-for (final hand in hands) {
-  print('Hand at: ${hand.boundingBox}');
-
-  if (hand.hasLandmarks) {
-    final wrist = hand.getLandmark(HandLandmarkType.wrist);
-    print('Wrist: (${wrist?.x}, ${wrist?.y})');
-  }
-
-  if (hand.hasGesture) {
-    print('Gesture: ${hand.gesture!.type.name}');
-    print('Confidence: ${hand.gesture!.confidence}');
-  }
-}
-
-// Cleanup when done
-await detector.dispose();
-```
-
-### When to Use HandDetectorIsolate
-
-| Use Case | Recommended |
-|----------|-------------|
-| Live camera with 60fps UI requirement | `HandDetectorIsolate` |
-| Processing images in a batch queue | `HandDetectorIsolate` |
-| Simple single-image detection | `HandDetector` |
-| Maximum control over pipeline stages | `HandDetector` |
-
-### Configuration
-
-`HandDetectorIsolate.spawn()` accepts the same configuration options as `HandDetector`:
-
-```dart
-final detector = await HandDetectorIsolate.spawn(
-  mode: HandMode.boxesAndLandmarks,
-  performanceConfig: PerformanceConfig.xnnpack(),
-  enableGestures: true,
-  maxDetections: 4,
-);
-```
-
-### OpenCV Mat Support
-
-`HandDetectorIsolate` fully supports OpenCV `cv.Mat` input, ideal for live camera processing:
-
-```dart
-import 'package:opencv_dart/opencv_dart.dart' as cv;
-
-// From cv.Mat (e.g., decoded image or camera frame)
-final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-final hands = await detector.detectHandsFromMat(mat);
-mat.dispose();
-
-// From raw BGR bytes (e.g., converted camera YUV)
-final hands = await detector.detectHandsFromMatBytes(
-  bgrBytes,
-  width: frameWidth,
-  height: frameHeight,
-);
-```
-
-The Mat is reconstructed in the background isolate using zero-copy transfer, so there's no encoding/decoding overhead.
+All inference runs automatically in a background isolate: the UI thread is never blocked during detection or gesture recognition. No special configuration is needed; `HandDetector` handles isolate management internally.
 
 ## Example
 

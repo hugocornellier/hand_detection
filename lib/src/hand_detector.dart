@@ -9,7 +9,7 @@ import 'types.dart';
 import 'isolate/hand_detector_core.dart';
 
 /// Startup payload transferred to the background isolate via [Isolate.spawn].
-class _IsolateStartupData {
+class _DetectionIsolateStartupData {
   final SendPort sendPort;
   final TransferableTypedData palmDetectionBytes;
   final TransferableTypedData handLandmarkBytes;
@@ -26,7 +26,7 @@ class _IsolateStartupData {
   final bool enableGestures;
   final double gestureMinConfidence;
 
-  _IsolateStartupData({
+  _DetectionIsolateStartupData({
     required this.sendPort,
     required this.palmDetectionBytes,
     required this.handLandmarkBytes,
@@ -67,7 +67,7 @@ class _IsolateStartupData {
 /// await detector.dispose();
 /// ```
 class HandDetector {
-  static const String _packageVersion = '2.2.0';
+  static const String _packageVersion = '3.0.0';
   static const String _pipelineVersion = 'pipeline_v1';
 
   /// Version key for the default hand detection pipeline.
@@ -90,72 +90,17 @@ class HandDetector {
         '$_pipelineVersion';
   }
 
-  /// Detection mode controlling pipeline behavior.
-  final HandMode mode;
-
-  /// Hand landmark model variant to use for landmark extraction.
-  final HandLandmarkModel landmarkModel;
-
-  /// Confidence threshold for palm detection (0.0 to 1.0).
-  final double detectorConf;
-
-  /// Maximum number of hands to detect per image.
-  final int maxDetections;
-
-  /// Minimum confidence score for landmark predictions (0.0 to 1.0).
-  final double minLandmarkScore;
-
-  /// Number of TensorFlow Lite interpreter instances in the landmark model pool.
-  final int interpreterPoolSize;
-
-  /// Performance configuration for TensorFlow Lite inference.
-  ///
-  /// By default, auto mode selects the optimal delegate per platform:
-  /// - iOS: Metal GPU delegate
-  /// - Android/macOS/Linux/Windows: XNNPACK (2-5x SIMD acceleration)
-  final PerformanceConfig performanceConfig;
-
-  /// Whether to run gesture recognition on detected hands.
-  /// When enabled, each detected hand will include a [GestureResult].
-  final bool enableGestures;
-
-  /// Minimum confidence threshold for gesture recognition (0.0 to 1.0).
-  /// Gestures with confidence below this threshold will be reported as [GestureType.unknown].
-  final double gestureMinConfidence;
-
   _HandDetectorWorker? _worker;
 
-  /// Creates a hand detector with the specified configuration.
+  /// Creates a hand detector instance.
   ///
   /// The detector is not ready for use until you call [initialize].
-  ///
-  /// Parameters:
-  /// - [mode]: Detection mode (boxes only or boxes + landmarks). Default: [HandMode.boxesAndLandmarks]
-  /// - [landmarkModel]: Hand landmark model variant. Default: [HandLandmarkModel.full]
-  /// - [detectorConf]: Palm detection confidence threshold (0.0-1.0). Default: 0.45
-  /// - [maxDetections]: Maximum number of hands to detect. Default: 10
-  /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
-  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1.
-  ///   Forced to 1 when a performance delegate (XNNPACK/auto) is enabled.
-  /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: auto (optimal per platform)
-  /// - [enableGestures]: Whether to run gesture recognition. Default: false
-  /// - [gestureMinConfidence]: Minimum confidence for gesture recognition (0.0-1.0). Default: 0.5
-  HandDetector({
-    this.mode = HandMode.boxesAndLandmarks,
-    this.landmarkModel = HandLandmarkModel.full,
-    this.detectorConf = 0.45,
-    this.maxDetections = 10,
-    this.minLandmarkScore = 0.5,
-    this.interpreterPoolSize = 1,
-    this.performanceConfig = const PerformanceConfig(),
-    this.enableGestures = false,
-    this.gestureMinConfidence = 0.5,
-  });
+  HandDetector();
 
   /// Creates and initializes a hand detector in one step.
   ///
   /// Convenience factory that combines [HandDetector.new] and [initialize].
-  /// Accepts the same parameters as the constructor.
+  /// Accepts the same parameters as [initialize].
   ///
   /// Example:
   /// ```dart
@@ -176,7 +121,8 @@ class HandDetector {
     bool enableGestures = false,
     double gestureMinConfidence = 0.5,
   }) async {
-    final detector = HandDetector(
+    final detector = HandDetector();
+    await detector.initialize(
       mode: mode,
       landmarkModel: landmarkModel,
       detectorConf: detectorConf,
@@ -187,7 +133,6 @@ class HandDetector {
       enableGestures: enableGestures,
       gestureMinConfidence: gestureMinConfidence,
     );
-    await detector.initialize();
     return detector;
   }
 
@@ -203,7 +148,29 @@ class HandDetector {
   ///
   /// Must be called before [detect] or [detectFromMat].
   /// Calling [initialize] twice without [dispose] throws [StateError].
-  Future<void> initialize() async {
+  ///
+  /// Parameters:
+  /// - [mode]: Detection mode (boxes only or boxes + landmarks). Default: [HandMode.boxesAndLandmarks]
+  /// - [landmarkModel]: Hand landmark model variant. Default: [HandLandmarkModel.full]
+  /// - [detectorConf]: Palm detection confidence threshold (0.0-1.0). Default: 0.45
+  /// - [maxDetections]: Maximum number of hands to detect. Default: 10
+  /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
+  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1.
+  ///   Forced to 1 when a performance delegate (XNNPACK/auto) is enabled.
+  /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: auto (optimal per platform)
+  /// - [enableGestures]: Whether to run gesture recognition. Default: false
+  /// - [gestureMinConfidence]: Minimum confidence for gesture recognition (0.0-1.0). Default: 0.5
+  Future<void> initialize({
+    HandMode mode = HandMode.boxesAndLandmarks,
+    HandLandmarkModel landmarkModel = HandLandmarkModel.full,
+    double detectorConf = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
+    bool enableGestures = false,
+    double gestureMinConfidence = 0.5,
+  }) async {
     if (isReady) {
       throw StateError('HandDetector already initialized');
     }
@@ -239,11 +206,24 @@ class HandDetector {
       gestureClassifierBytes = results[3].buffer.asUint8List();
     }
 
+    final effectivePoolSize = performanceConfig.mode == PerformanceMode.disabled
+        ? interpreterPoolSize
+        : 1;
+
     await initializeFromBuffers(
       palmDetectionBytes: palmBytes,
       handLandmarkBytes: landmarkBytes,
       gestureEmbedderBytes: gestureEmbedderBytes,
       gestureClassifierBytes: gestureClassifierBytes,
+      mode: mode,
+      landmarkModel: landmarkModel,
+      detectorConf: detectorConf,
+      maxDetections: maxDetections,
+      minLandmarkScore: minLandmarkScore,
+      interpreterPoolSize: effectivePoolSize,
+      performanceConfig: performanceConfig,
+      enableGestures: enableGestures,
+      gestureMinConfidence: gestureMinConfidence,
     );
   }
 
@@ -258,15 +238,38 @@ class HandDetector {
   /// - [handLandmarkBytes]: Raw bytes of the hand landmark TFLite model
   /// - [gestureEmbedderBytes]: Raw bytes of the gesture embedder model (optional; required for gesture recognition)
   /// - [gestureClassifierBytes]: Raw bytes of the gesture classifier model (optional; required for gesture recognition)
+  /// - [mode]: Detection mode. Default: [HandMode.boxesAndLandmarks]
+  /// - [landmarkModel]: Hand landmark model variant. Default: [HandLandmarkModel.full]
+  /// - [detectorConf]: Palm detection confidence threshold. Default: 0.45
+  /// - [maxDetections]: Maximum number of hands to detect. Default: 10
+  /// - [minLandmarkScore]: Minimum landmark confidence score. Default: 0.5
+  /// - [interpreterPoolSize]: Number of landmark model interpreter instances. Default: 1.
+  ///   Forced to 1 when a performance delegate (XNNPACK/auto) is enabled.
+  /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: auto
+  /// - [enableGestures]: Whether to run gesture recognition. Default: false
+  /// - [gestureMinConfidence]: Minimum confidence for gesture recognition. Default: 0.5
   Future<void> initializeFromBuffers({
     required Uint8List palmDetectionBytes,
     required Uint8List handLandmarkBytes,
     Uint8List? gestureEmbedderBytes,
     Uint8List? gestureClassifierBytes,
+    HandMode mode = HandMode.boxesAndLandmarks,
+    HandLandmarkModel landmarkModel = HandLandmarkModel.full,
+    double detectorConf = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
+    bool enableGestures = false,
+    double gestureMinConfidence = 0.5,
   }) async {
     if (isReady) {
       throw StateError('HandDetector already initialized');
     }
+
+    final effectivePoolSize = performanceConfig.mode == PerformanceMode.disabled
+        ? interpreterPoolSize
+        : 1;
 
     final worker = _HandDetectorWorker();
 
@@ -281,7 +284,7 @@ class HandDetector {
         detectorConf: detectorConf,
         maxDetections: maxDetections,
         minLandmarkScore: minLandmarkScore,
-        interpreterPoolSize: interpreterPoolSize,
+        interpreterPoolSize: effectivePoolSize,
         performanceConfig: performanceConfig,
         enableGestures: enableGestures,
         gestureMinConfidence: gestureMinConfidence,
@@ -305,29 +308,21 @@ class HandDetector {
   /// - [imageBytes]: Raw image data in a supported format (JPEG, PNG, etc.)
   ///
   /// Returns a list of [Hand] objects, one per detected hand.
-  /// Returns an empty list if image decoding fails or no hands are detected.
   ///
   /// Throws [StateError] if called before [initialize].
-  Future<List<Hand>> detect(List<int> imageBytes) async {
+  /// Throws [FormatException] if the image bytes cannot be decoded.
+  Future<List<Hand>> detect(Uint8List imageBytes) async {
     if (!isReady) {
       throw StateError(
           'HandDetector not initialized. Call initialize() first.');
     }
-    try {
-      final Uint8List bytes =
-          imageBytes is Uint8List ? imageBytes : Uint8List.fromList(imageBytes);
-      final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
-        'detect',
-        {
-          'bytes': TransferableTypedData.fromList([bytes]),
-        },
-      );
-      return _deserializeHands(result);
-    } catch (e) {
-      // Intentionally broad: imdecode can throw on malformed bytes; treat any
-      // decode/pipeline failure as "no hands detected" for production robustness.
-      return <Hand>[];
-    }
+    final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
+      'detect',
+      {
+        'bytes': TransferableTypedData.fromList([imageBytes]),
+      },
+    );
+    return _deserializeHands(result);
   }
 
   /// Detects hands in an image file at [path].
@@ -346,7 +341,7 @@ class HandDetector {
   ///
   /// The Mat's raw pixel data is extracted and transferred to the background
   /// isolate using zero-copy [TransferableTypedData]. The original Mat is NOT
-  /// disposed by this method — the caller is responsible for disposal.
+  /// disposed by this method; the caller is responsible for disposal.
   ///
   /// Throws [StateError] if called before [initialize].
   Future<List<Hand>> detectFromMat(cv.Mat image) {
@@ -363,7 +358,7 @@ class HandDetector {
 
   /// Detects hands from raw pixel bytes without constructing a [cv.Mat] first.
   ///
-  /// This avoids the overhead of building a Mat on the calling thread —
+  /// This avoids the overhead of building a Mat on the calling thread:
   /// the bytes are transferred via zero-copy [TransferableTypedData] and the
   /// Mat is reconstructed inside the background isolate.
   ///
@@ -398,6 +393,71 @@ class HandDetector {
     return _deserializeHands(result);
   }
 
+  /// Detects hands directly from a [CameraFrame] produced by
+  /// [prepareCameraFrame].
+  ///
+  /// The frame's YUV→BGR colour conversion and any optional rotation happen
+  /// inside the detection isolate, not on the calling thread. Use this from a
+  /// `CameraController.startImageStream` callback to keep the UI thread free
+  /// of OpenCV work.
+  ///
+  /// Throws [StateError] if called before [initialize].
+  Future<List<Hand>> detectFromCameraFrame(
+    CameraFrame frame, {
+    int? maxDim,
+  }) async {
+    if (!isReady) {
+      throw StateError(
+          'HandDetector not initialized. Call initialize() first.');
+    }
+    final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
+      'detectCameraFrame',
+      {
+        'bytes': TransferableTypedData.fromList([frame.bytes]),
+        'width': frame.width,
+        'height': frame.height,
+        'strideCols': frame.strideCols,
+        'conversion': frame.conversion.index,
+        'rotation': frame.rotation?.index,
+        'maxDim': maxDim,
+      },
+    );
+    return _deserializeHands(result);
+  }
+
+  /// One-call wrapper for live camera streams: takes a `CameraImage`-shaped
+  /// object directly (any object exposing `width`, `height`, and `planes` with
+  /// `bytes` / `bytesPerRow` / `bytesPerPixel`) and runs YUV packing, colour
+  /// conversion, rotation, and downscale in the detection isolate — all off
+  /// the UI thread.
+  ///
+  /// Returns an empty list (not an error) when the plane shape can't be
+  /// decoded. Throws at runtime if [cameraImage] doesn't expose the expected
+  /// shape.
+  ///
+  /// [isBgra] selects BGRA (macOS, default) vs. RGBA (Linux) for the desktop
+  /// single-plane path; ignored for YUV input.
+  ///
+  /// Throws [StateError] if [initialize] has not been called.
+  Future<List<Hand>> detectFromCameraImage(
+    Object cameraImage, {
+    CameraFrameRotation? rotation,
+    bool isBgra = true,
+    int? maxDim,
+  }) async {
+    if (!isReady) {
+      throw StateError(
+          'HandDetector not initialized. Call initialize() first.');
+    }
+    final frame = prepareCameraFrameFromImage(
+      cameraImage,
+      rotation: rotation,
+      isBgra: isBgra,
+    );
+    if (frame == null) return const <Hand>[];
+    return detectFromCameraFrame(frame, maxDim: maxDim);
+  }
+
   /// Detects hands in an OpenCV Mat image.
   ///
   /// Deprecated: Use [detectFromMat] instead.
@@ -419,8 +479,24 @@ class HandDetector {
 
   /// Releases all resources used by the detector.
   Future<void> dispose() async {
-    await _worker?.dispose();
+    final worker = _worker;
     _worker = null;
+    if (worker == null) return;
+
+    // Graceful shutdown: send 'dispose' as an RPC and await the ack before
+    // letting the worker force-kill the isolate. flutter_litert's
+    // IsolateWorkerBase calls Isolate.kill(priority: immediate) which races
+    // past any queued 'dispose' message, so without this round-trip the
+    // isolate dies before it can free its TFLite interpreters. On Android
+    // each detector leaks ~10-26MB of native memory; under sequential
+    // create/dispose load the low-memory killer reaps the test process.
+    try {
+      await worker.sendRequest<dynamic>('dispose',
+          const <String, dynamic>{}).timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Best-effort: fall through to the force-kill below.
+    }
+    await worker.dispose();
   }
 
   List<Hand> _deserializeHands(List<dynamic> result) => result
@@ -429,7 +505,7 @@ class HandDetector {
 
   /// Isolate entry point: initializes [HandDetectorCore] and listens for detection requests.
   @pragma('vm:entry-point')
-  static void _isolateEntry(_IsolateStartupData data) async {
+  static void _detectionIsolateEntry(_DetectionIsolateStartupData data) async {
     final SendPort mainSendPort = data.sendPort;
     final ReceivePort workerReceivePort = ReceivePort();
 
@@ -505,11 +581,6 @@ class HandDetector {
                 (message['bytes'] as TransferableTypedData).materialize();
             final Uint8List imageBytes = bb.asUint8List();
             final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-            if (mat.isEmpty) {
-              mat.dispose();
-              mainSendPort.send({'id': id, 'result': <dynamic>[]});
-              return;
-            }
             try {
               final hands = await core!.detectDirect(mat);
               mainSendPort.send({
@@ -546,15 +617,152 @@ class HandDetector {
               mat.dispose();
             }
 
+          case 'detectCameraFrame':
+            if (core == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'HandDetectorCore not initialized in isolate',
+              });
+              return;
+            }
+            final Uint8List frameBytes =
+                (message['bytes'] as TransferableTypedData)
+                    .materialize()
+                    .asUint8List();
+            final frameMat = _matFromCameraFrameMessage(message, frameBytes);
+            try {
+              final hands = await core!.detectDirect(frameMat);
+              mainSendPort.send({
+                'id': id,
+                'result': hands.map((h) => h.toMap()).toList(),
+              });
+            } finally {
+              frameMat.dispose();
+            }
+
           case 'dispose':
             await core?.dispose();
             core = null;
+            // ACK the dispose so the main side can await it before force-
+            // killing the isolate. See HandDetector.dispose().
+            mainSendPort.send({'id': id, 'result': null});
             workerReceivePort.close();
         }
       } catch (e, st) {
         mainSendPort.send({'id': id, 'error': '$e\n$st'});
       }
     });
+  }
+
+  /// Decodes a [CameraFrame] isolate message into a 3-channel BGR [cv.Mat],
+  /// applying the conversion (YUV→BGR or BGRA/RGBA→BGR, with optional stride
+  /// crop) and any requested rotation. Runs inside the detection isolate.
+  ///
+  /// Op ordering is tuned to keep the big allocations tiny: for BGRA frames we
+  /// resize and rotate on the 4-channel buffer and defer `cvtColor` to the end
+  /// (so it converts the post-resize ~maxDim buffer, not full-res). For YUV we
+  /// must `cvtColor` first because the packed layout isn't resizable, but we
+  /// then resize before rotating so the rotate runs on the small BGR buffer.
+  /// Output is byte-identical to the rotate→resize→cvtColor order because
+  /// `cv.rotate` 90/180/270 is a lossless permutation, `cv.resize`
+  /// (`INTER_LINEAR`) interpolates each channel independently, and the
+  /// BGRA→BGR conversion is a per-pixel alpha drop.
+  static cv.Mat _matFromCameraFrameMessage(Map message, Uint8List bytes) {
+    final int width = message['width'] as int;
+    final int height = message['height'] as int;
+    final int strideCols = message['strideCols'] as int;
+    final conversion =
+        CameraFrameConversion.values[message['conversion'] as int];
+    final int? rotationIndex = message['rotation'] as int?;
+    final int? maxDim = message['maxDim'] as int?;
+
+    int? rotateFlag() {
+      if (rotationIndex == null) return null;
+      return switch (CameraFrameRotation.values[rotationIndex]) {
+        CameraFrameRotation.cw90 => cv.ROTATE_90_CLOCKWISE,
+        CameraFrameRotation.cw180 => cv.ROTATE_180,
+        CameraFrameRotation.cw270 => cv.ROTATE_90_COUNTERCLOCKWISE,
+      };
+    }
+
+    cv.Mat maybeResize(cv.Mat m) {
+      if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
+      final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
+      final resized = cv.resize(
+        m,
+        ((m.cols * scale).toInt(), (m.rows * scale).toInt()),
+        interpolation: cv.INTER_LINEAR,
+      );
+      m.dispose();
+      return resized;
+    }
+
+    cv.Mat maybeRotate(cv.Mat m) {
+      final flag = rotateFlag();
+      if (flag == null) return m;
+      final rotated = cv.rotate(m, flag);
+      m.dispose();
+      return rotated;
+    }
+
+    switch (conversion) {
+      case CameraFrameConversion.bgra2bgr:
+      case CameraFrameConversion.rgba2bgr:
+        final bgraOrRgba =
+            cv.Mat.fromList(height, strideCols, cv.MatType.CV_8UC4, bytes);
+        cv.Mat current = strideCols != width
+            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
+            : bgraOrRgba;
+
+        if (maxDim != null &&
+            (current.cols > maxDim || current.rows > maxDim)) {
+          final double scale = maxDim /
+              (current.cols > current.rows ? current.cols : current.rows);
+          final resized = cv.resize(
+            current,
+            ((current.cols * scale).toInt(), (current.rows * scale).toInt()),
+            interpolation: cv.INTER_LINEAR,
+          );
+          if (!identical(current, bgraOrRgba)) current.dispose();
+          current = resized;
+        }
+
+        final flag = rotateFlag();
+        if (flag != null) {
+          final rotated = cv.rotate(current, flag);
+          if (!identical(current, bgraOrRgba)) current.dispose();
+          current = rotated;
+        }
+
+        final cvtCode = conversion == CameraFrameConversion.bgra2bgr
+            ? cv.COLOR_BGRA2BGR
+            : cv.COLOR_RGBA2BGR;
+        final bgr = cv.cvtColor(current, cvtCode);
+        if (!identical(current, bgraOrRgba)) current.dispose();
+        bgraOrRgba.dispose();
+        return bgr;
+
+      case CameraFrameConversion.yuv2bgrNv12:
+      case CameraFrameConversion.yuv2bgrNv21:
+      case CameraFrameConversion.yuv2bgrI420:
+        final yuvMat = cv.Mat.fromList(
+          height + height ~/ 2,
+          width,
+          cv.MatType.CV_8UC1,
+          bytes,
+        );
+        final cvtCode = switch (conversion) {
+          CameraFrameConversion.yuv2bgrNv12 => cv.COLOR_YUV2BGR_NV12,
+          CameraFrameConversion.yuv2bgrNv21 => cv.COLOR_YUV2BGR_NV21,
+          CameraFrameConversion.yuv2bgrI420 => cv.COLOR_YUV2BGR_I420,
+          _ => cv.COLOR_YUV2BGR_NV12,
+        };
+        cv.Mat current = cv.cvtColor(yuvMat, cvtCode);
+        yuvMat.dispose();
+        current = maybeResize(current);
+        current = maybeRotate(current);
+        return current;
+    }
   }
 }
 
@@ -590,8 +798,8 @@ class _HandDetectorWorker extends IsolateWorkerBase {
 
     await initWorker(
       (sendPort) => Isolate.spawn(
-        HandDetector._isolateEntry,
-        _IsolateStartupData(
+        HandDetector._detectionIsolateEntry,
+        _DetectionIsolateStartupData(
           sendPort: sendPort,
           palmDetectionBytes:
               TransferableTypedData.fromList([palmDetectionBytes]),

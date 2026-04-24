@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter_litert/flutter_litert.dart'
+    show BoundingBox, PerformanceConfig;
 import 'package:meta/meta.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import '../types.dart';
@@ -97,7 +99,9 @@ class HandDetectorCore {
   /// Runs hand detection directly on the calling thread.
   Future<List<Hand>> detectDirect(cv.Mat image) async {
     if (_palm == null || _lm == null) {
-      throw StateError('HandDetectorCore not initialized.');
+      throw StateError(
+        'HandDetectorCore not initialized. Call initializeFromBuffers() first.',
+      );
     }
 
     final List<PalmDetection> palms = await _palm!.detectOnMat(image);

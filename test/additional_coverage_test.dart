@@ -10,7 +10,7 @@ import 'package:hand_detection/src/models/hand_landmark_model.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('HandDetector returns empty when cv.imdecode fails', () async {
+  test('HandDetector propagates error when cv.imdecode fails', () async {
     final palmBytes = Uint8List.fromList(
       File('${Directory.current.path}/assets/models/hand_detection.tflite')
           .readAsBytesSync(),
@@ -26,11 +26,12 @@ void main() {
       handLandmarkBytes: landmarkBytes,
     );
 
-    // Invalid bytes should fail to decode
-    final List<Hand> results = await detector.detect(const <int>[1, 2, 3]);
-
     try {
-      expect(results, isEmpty);
+      // Invalid bytes should throw instead of returning an empty list
+      await expectLater(
+        () => detector.detect(Uint8List.fromList(const <int>[1, 2, 3])),
+        throwsA(anything),
+      );
     } finally {
       await detector.dispose();
     }

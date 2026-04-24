@@ -58,36 +58,49 @@ void main() {
     });
 
     testWidgets('should initialize with custom configuration', (tester) async {
-      final detector = HandDetector(
+      final detector = HandDetector();
+
+      await detector.initialize(
         mode: HandMode.boxes,
         landmarkModel: HandLandmarkModel.full,
         detectorConf: 0.6,
         maxDetections: 5,
         minLandmarkScore: 0.7,
       );
-
-      await detector.initialize();
-      expect(detector.isInitialized, true);
-      expect(detector.mode, HandMode.boxes);
-      expect(detector.landmarkModel, HandLandmarkModel.full);
-      expect(detector.detectorConf, 0.6);
-      expect(detector.maxDetections, 5);
-      expect(detector.minLandmarkScore, 0.7);
-
-      await detector.dispose();
-    });
-
-    testWidgets('should allow re-initialization', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
-      expect(detector.isInitialized, true);
-
-      // Re-initialize should work
-      await detector.initialize();
       expect(detector.isInitialized, true);
 
       await detector.dispose();
     });
+
+    testWidgets('should allow dispose then re-initialize', (tester) async {
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
+      expect(detector.isInitialized, true);
+
+      await detector.dispose();
+      expect(detector.isInitialized, false);
+
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
+      expect(detector.isInitialized, true);
+
+      await detector.dispose();
+    });
+
+    testWidgets(
+      'should throw StateError when initialize called twice without dispose',
+      (tester) async {
+        final detector = HandDetector();
+        await detector.initialize(landmarkModel: HandLandmarkModel.full);
+        expect(detector.isInitialized, true);
+
+        await expectLater(
+          () => detector.initialize(),
+          throwsA(isA<StateError>()),
+        );
+
+        await detector.dispose();
+      },
+    );
 
     testWidgets('should handle multiple dispose calls', (tester) async {
       final detector = HandDetector();
@@ -138,15 +151,15 @@ void main() {
       }
     });
 
-    testWidgets('should return empty list for invalid image bytes',
-        (tester) async {
+    testWidgets('should throw for invalid image bytes', (tester) async {
       final detector = HandDetector();
       await detector.initialize();
 
       final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
-      final results = await detector.detect(invalidBytes);
-
-      expect(results, isEmpty);
+      await expectLater(
+        () => detector.detect(invalidBytes),
+        throwsA(anything),
+      );
       await detector.dispose();
     });
   });
@@ -155,14 +168,14 @@ void main() {
     testWidgets(
         'should detect hands in sample image with boxesAndLandmarks mode',
         (tester) async {
-      final detector = HandDetector(
+      final detector = HandDetector();
+      await detector.initialize(
         mode: HandMode.boxesAndLandmarks,
         landmarkModel: HandLandmarkModel.full,
       );
-      await detector.initialize();
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -197,11 +210,11 @@ void main() {
     });
 
     testWidgets('should detect hands in second sample image', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
       final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/360_F_554788951_fLAy5C8e9bha4caBTWVJN6rvTD0pEVfE.jpg');
+          'assets/samples/360_F_554788951_fLAy5C8e9bha4caBTWVJN6rvTD0pEVfE.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -210,14 +223,14 @@ void main() {
     });
 
     testWidgets('should detect hands with boxes-only mode', (tester) async {
-      final detector = HandDetector(
+      final detector = HandDetector();
+      await detector.initialize(
         mode: HandMode.boxes,
         landmarkModel: HandLandmarkModel.full,
       );
-      await detector.initialize();
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -239,12 +252,12 @@ void main() {
 
   group('HandDetector - detectFromMat() method', () {
     testWidgets('should work with pre-decoded image', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
       // Load and decode image manually
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
@@ -271,11 +284,11 @@ void main() {
 
   group('HandDetector - Different Model Variants', () {
     testWidgets('should work with lite model', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -286,11 +299,11 @@ void main() {
     });
 
     testWidgets('should work with full model', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -301,11 +314,11 @@ void main() {
     });
 
     testWidgets('should work with heavy model', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -318,11 +331,11 @@ void main() {
 
   group('HandDetector - Landmark and BoundingBox Access', () {
     testWidgets('should access specific landmarks by type', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final hands = await detector.detect(bytes);
 
@@ -346,11 +359,11 @@ void main() {
     });
 
     testWidgets('should have valid landmark coordinates', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final hands = await detector.detect(bytes);
 
@@ -375,11 +388,11 @@ void main() {
     });
 
     testWidgets('should have all 21 landmarks', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final hands = await detector.detect(bytes);
 
@@ -424,21 +437,21 @@ void main() {
   group('HandDetector - Configuration Parameters', () {
     testWidgets('should respect detectorConf threshold', (tester) async {
       // High confidence threshold
-      final strictDetector = HandDetector(
+      final strictDetector = HandDetector();
+      await strictDetector.initialize(
         landmarkModel: HandLandmarkModel.full,
         detectorConf: 0.9,
       );
-      await strictDetector.initialize();
 
       // Low confidence threshold
-      final lenientDetector = HandDetector(
+      final lenientDetector = HandDetector();
+      await lenientDetector.initialize(
         landmarkModel: HandLandmarkModel.full,
         detectorConf: 0.3,
       );
-      await lenientDetector.initialize();
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       final strictResults = await strictDetector.detect(bytes);
@@ -452,14 +465,14 @@ void main() {
     });
 
     testWidgets('should respect maxDetections parameter', (tester) async {
-      final detector = HandDetector(
+      final detector = HandDetector();
+      await detector.initialize(
         landmarkModel: HandLandmarkModel.full,
         maxDetections: 1,
       );
-      await detector.initialize();
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -472,11 +485,11 @@ void main() {
 
   group('HandDetector - Handedness Detection', () {
     testWidgets('should detect handedness for each hand', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -493,12 +506,12 @@ void main() {
 
   group('HandDetector - Multiple Images', () {
     testWidgets('should process multiple images sequentially', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
       final images = [
-        'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg',
-        'packages/hand_detection/assets/samples/360_F_554788951_fLAy5C8e9bha4caBTWVJN6rvTD0pEVfE.jpg',
+        'assets/samples/istockphoto-462908027-612x612.jpg',
+        'assets/samples/360_F_554788951_fLAy5C8e9bha4caBTWVJN6rvTD0pEVfE.jpg',
       ];
 
       for (final imagePath in images) {
@@ -516,11 +529,11 @@ void main() {
   group('HandDetector - Edge Cases', () {
     testWidgets('should handle empty landmarks list in boxes mode',
         (tester) async {
-      final detector = HandDetector(mode: HandMode.boxes);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(mode: HandMode.boxes);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -538,15 +551,15 @@ void main() {
 
   group('HandDetector - Gesture Recognition', () {
     testWidgets('should detect gestures when enabled', (tester) async {
-      final detector = HandDetector(
+      final detector = HandDetector();
+      await detector.initialize(
         mode: HandMode.boxesAndLandmarks,
         landmarkModel: HandLandmarkModel.full,
         enableGestures: true,
       );
-      await detector.initialize();
 
-      final ByteData data = await rootBundle
-          .load('packages/hand_detection/assets/samples/two-palms.png');
+      final ByteData data =
+          await rootBundle.load('assets/samples/two-palms.png');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -563,15 +576,15 @@ void main() {
     });
 
     testWidgets('should not detect gestures when disabled', (tester) async {
-      final detector = HandDetector(
+      final detector = HandDetector();
+      await detector.initialize(
         mode: HandMode.boxesAndLandmarks,
         landmarkModel: HandLandmarkModel.full,
         enableGestures: false,
       );
-      await detector.initialize();
 
-      final ByteData data = await rootBundle
-          .load('packages/hand_detection/assets/samples/two-palms.png');
+      final ByteData data =
+          await rootBundle.load('assets/samples/two-palms.png');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -587,16 +600,16 @@ void main() {
 
     testWidgets('should respect gestureMinConfidence threshold',
         (tester) async {
-      final detector = HandDetector(
+      final detector = HandDetector();
+      await detector.initialize(
         mode: HandMode.boxesAndLandmarks,
         landmarkModel: HandLandmarkModel.full,
         enableGestures: true,
         gestureMinConfidence: 0.99,
       );
-      await detector.initialize();
 
-      final ByteData data = await rootBundle
-          .load('packages/hand_detection/assets/samples/two-palms.png');
+      final ByteData data =
+          await rootBundle.load('assets/samples/two-palms.png');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -614,15 +627,15 @@ void main() {
 
     testWidgets('should detect handedness with gestures enabled',
         (tester) async {
-      final detector = HandDetector(
+      final detector = HandDetector();
+      await detector.initialize(
         mode: HandMode.boxesAndLandmarks,
         landmarkModel: HandLandmarkModel.full,
         enableGestures: true,
       );
-      await detector.initialize();
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -639,17 +652,19 @@ void main() {
 
   group('HandDetector - Error Recovery', () {
     testWidgets('should recover after invalid input', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      // First call with invalid bytes should return empty
+      // First call with invalid bytes should throw
       final invalidBytes = Uint8List.fromList([0, 1, 2, 3]);
-      final invalidResults = await detector.detect(invalidBytes);
-      expect(invalidResults, isEmpty);
+      await expectLater(
+        () => detector.detect(invalidBytes),
+        throwsA(anything),
+      );
 
       // Second call with a valid image should succeed normally
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> validResults = await detector.detect(bytes);
       expect(validResults, isNotEmpty);
@@ -661,11 +676,11 @@ void main() {
   group('HandDetector - detect() API Consistency', () {
     testWidgets('should give same results from detect and detectFromMat',
         (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
@@ -692,11 +707,11 @@ void main() {
 
   group('HandDetector - Result Consistency', () {
     testWidgets('should produce deterministic results', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
       expect(mat.isEmpty, isFalse);
@@ -737,8 +752,8 @@ void main() {
       );
       expect(detector.isReady, true);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await detector.detect(bytes);
 
@@ -762,8 +777,8 @@ void main() {
         landmarkModel: HandLandmarkModel.full,
       );
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
       expect(mat.isEmpty, isFalse);
@@ -794,8 +809,8 @@ void main() {
         landmarkModel: HandLandmarkModel.full,
       );
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       final List<Hand> firstResults = await first.detect(bytes);
@@ -827,8 +842,8 @@ void main() {
       );
       expect(second.isReady, true);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> results = await second.detect(bytes);
 
@@ -840,11 +855,11 @@ void main() {
 
   group('HandDetector - Landmark Validation', () {
     testWidgets('should have z-coordinates on all landmarks', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
-      final ByteData data = await rootBundle.load(
-          'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg');
+      final ByteData data = await rootBundle
+          .load('assets/samples/istockphoto-462908027-612x612.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Hand> hands = await detector.detect(bytes);
 
@@ -862,12 +877,12 @@ void main() {
     });
 
     testWidgets('should handle portrait orientation image', (tester) async {
-      final detector = HandDetector(landmarkModel: HandLandmarkModel.full);
-      await detector.initialize();
+      final detector = HandDetector();
+      await detector.initialize(landmarkModel: HandLandmarkModel.full);
 
       // img-standing.png is a portrait-oriented image
-      final ByteData data = await rootBundle
-          .load('packages/hand_detection/assets/samples/img-standing.png');
+      final ByteData data =
+          await rootBundle.load('assets/samples/img-standing.png');
       final Uint8List bytes = data.buffer.asUint8List();
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
       expect(mat.isEmpty, isFalse);

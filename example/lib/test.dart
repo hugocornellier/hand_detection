@@ -4,11 +4,11 @@ import 'package:hand_detection/hand_detection.dart';
 
 Future main() async {
   // 1. initialize
-  final HandDetector detector = HandDetector(
+  final HandDetector detector = HandDetector();
+  await detector.initialize(
     mode: HandMode.boxesAndLandmarks,
     landmarkModel: HandLandmarkModel.full,
   );
-  await detector.initialize();
 
   // 2. detect
   final Uint8List imageBytes = await File('path/to/image.jpg').readAsBytes();

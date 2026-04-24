@@ -6,7 +6,7 @@ PODS:
   - flutter_litert (0.0.1):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
-  - hand_detection (0.0.1):
+  - hand_detection (2.2.0):
     - FlutterMacOS
   - path_provider_foundation (0.0.1):
     - Flutter
@@ -39,7 +39,7 @@ SPEC CHECKSUMS:
   file_selector_macos: 6280b52b459ae6c590af5d78fc35c7267a3c4b31
   flutter_litert: 1bbe6e8757c574ab66044233b98353f34eaa7e29
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  hand_detection: 8ffa633b83d63ce6b005c6c26436209b4384b1c6
+  hand_detection: 5ba3335fce2a5ef7fb3e26b8ef6b5c80ce6a0642
   path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
 
 PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f

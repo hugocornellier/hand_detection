@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter_litert/flutter_litert.dart' show PerformanceConfig;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 import '../hand_detector.dart';
@@ -34,7 +35,8 @@ class HandDetectorIsolate {
     bool enableGestures = false,
     double gestureMinConfidence = 0.5,
   }) async {
-    final detector = HandDetector(
+    final detector = HandDetector();
+    await detector.initialize(
       mode: mode,
       landmarkModel: landmarkModel,
       detectorConf: detectorConf,
@@ -45,7 +47,6 @@ class HandDetectorIsolate {
       enableGestures: enableGestures,
       gestureMinConfidence: gestureMinConfidence,
     );
-    await detector.initialize();
     return HandDetectorIsolate._(detector: detector);
   }
 
@@ -58,8 +59,8 @@ class HandDetectorIsolate {
   /// - [imageBytes]: Encoded image data (JPEG, PNG, etc.) as a [List<int>] or [Uint8List]
   ///
   /// Returns a list of [Hand] objects, one per detected hand.
-  Future<List<Hand>> detectHands(List<int> imageBytes) =>
-      _detector.detect(imageBytes);
+  Future<List<Hand>> detectHands(List<int> imageBytes) => _detector.detect(
+      imageBytes is Uint8List ? imageBytes : Uint8List.fromList(imageBytes));
 
   /// Detects hands in a pre-decoded [cv.Mat] image in the background isolate.
   ///

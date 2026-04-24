@@ -7,7 +7,7 @@ void main() {
   group('HandDetector model version', () {
     test('default modelVersion is non-empty and package-scoped', () {
       expect(HandDetector.modelVersion, isNotEmpty);
-      expect(HandDetector.modelVersion, contains('hand_detection:2.2.0'));
+      expect(HandDetector.modelVersion, contains('hand_detection:3.0.0'));
       expect(HandDetector.modelVersion, HandDetector.modelVersionFor());
     });
 

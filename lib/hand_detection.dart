@@ -49,7 +49,7 @@
 ///
 /// **Main Classes:**
 /// - [HandDetector]: Main API for hand detection (runs inference in a background isolate)
-/// - [HandDetectorIsolate]: Deprecated — kept for backward compatibility; prefer [HandDetector]
+/// - [HandDetectorIsolate]: Deprecated, kept for backward compatibility; prefer [HandDetector]
 /// - [Hand]: Detected hand with bounding box, landmarks, handedness, and gesture
 /// - [HandLandmark]: Single keypoint with 3D coordinates (x, y, z) and visibility
 /// - [HandLandmarkType]: Enum of 21 hand landmarks (wrist, finger joints, tips)
@@ -79,6 +79,7 @@
 library;
 
 export 'src/types.dart';
+export 'src/ui/hand_overlay.dart';
 export 'src/hand_detector.dart' show HandDetector;
 export 'src/isolate/hand_detector_isolate.dart' show HandDetectorIsolate;
 export 'src/models/palm_detector.dart' show PalmDetection;
@@ -88,4 +89,38 @@ export 'src/dart_registration.dart';
 export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
 
 export 'package:flutter_litert/flutter_litert.dart'
-    show packYuv420, YuvPlane, YuvLayout, PackedYuv;
+    show
+        PerformanceMode,
+        PerformanceConfig,
+        createNHWCTensor4D,
+        fillNHWC4D,
+        allocTensorShape,
+        flattenDynamicTensor,
+        sigmoid,
+        sigmoidClipped,
+        clamp01,
+        clip,
+        computeLetterboxParams,
+        LetterboxParams,
+        bgrBytesToRgbFloat32,
+        bgrBytesToSignedFloat32,
+        Point,
+        BoundingBox,
+        packYuv420,
+        YuvPlane,
+        YuvLayout,
+        PackedYuv,
+        CameraPlane,
+        CameraFrame,
+        CameraFrameConversion,
+        CameraFrameRotation,
+        prepareCameraFrame,
+        prepareCameraFrameFromImage,
+        rotationForFrame,
+        detectionSize,
+        coverFitScaleOffset,
+        barQuarterTurns,
+        FpsCounter,
+        drawLandmarkMarker,
+        drawSkeletonConnections,
+        drawBoundingBoxOutline;

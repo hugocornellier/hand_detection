@@ -32,11 +32,11 @@ const int iterations = 100;
 const int warmupIterations = 10;
 
 const List<String> sampleImages = [
-  'packages/hand_detection/assets/samples/2-hands.png',
-  'packages/hand_detection/assets/samples/360_F_554788951_fLAy5C8e9bha4caBTWVJN6rvTD0pEVfE.jpg',
-  'packages/hand_detection/assets/samples/img-standing.png',
-  'packages/hand_detection/assets/samples/istockphoto-462908027-612x612.jpg',
-  'packages/hand_detection/assets/samples/two-palms.png',
+  'assets/samples/2-hands.png',
+  'assets/samples/360_F_554788951_fLAy5C8e9bha4caBTWVJN6rvTD0pEVfE.jpg',
+  'assets/samples/img-standing.png',
+  'assets/samples/istockphoto-462908027-612x612.jpg',
+  'assets/samples/two-palms.png',
 ];
 
 class BenchmarkStats {

@@ -1,4 +1,9 @@
-## 2.2.0
+## 3.0.0
+
+**Breaking:**
+* `HandDetector` configuration moves from the constructor to `initialize()`. `HandDetector({mode: ..., landmarkModel: ..., ...})` → `HandDetector()` + `await detector.initialize(mode: ..., landmarkModel: ..., ...)`. Matches `FaceDetector`'s shape. `HandDetector.create({...})` continues to accept the same named params unchanged.
+* `HandDetector.detect` now takes `Uint8List` instead of `List<int>`. Callers passing a plain `List<int>` must convert (`Uint8List.fromList(...)`); callers already passing `Uint8List` (including `File.readAsBytes()` and `camera` plugin bytes) are unaffected.
+* `detect(...)` no longer swallows exceptions. Previously, malformed image bytes resolved to an empty list; now they surface as an exception. Genuine errors (`StateError`, isolate failures, dispose races) also propagate. Wrap `detect(...)` in a `try/catch` if your callsite depended on the previous silent-failure behavior.
 
 * `HandDetector` now runs all TFLite inference in a dedicated background isolate automatically, keeping the UI thread free.
 * Deprecate `HandDetectorIsolate`: use `HandDetector` directly. `HandDetectorIsolate` is kept as a thin wrapper for backward compatibility and will be removed in a future release.
@@ -6,7 +11,9 @@
 * Add `detectFromFilepath(String path)` convenience method.
 * Add `detectFromMatBytes(Uint8List, {required int width, required int height, int matType})` fast path: transfers raw pixel bytes to the background isolate via zero-copy `TransferableTypedData`, avoiding `cv.Mat` construction on the calling thread.
 * Rename `detectOnMat` to `detectFromMat` and `detectOnMatBytes` to `detectFromMatBytes` for naming parity with `face_detection_tflite`; old names kept as deprecated aliases.
+* Expand `flutter_litert` re-exports through the `hand_detection` barrel to match `face_detection_tflite`: tensor helpers (`createNHWCTensor4D`, `fillNHWC4D`, `allocTensorShape`, `flattenDynamicTensor`), math helpers (`sigmoid`, `sigmoidClipped`, `clamp01`, `clip`), letterbox helpers (`computeLetterboxParams`, `LetterboxParams`), BGR→RGB byte helpers (`bgrBytesToRgbFloat32`, `bgrBytesToSignedFloat32`), and `PerformanceMode`. Consumers no longer need a direct `flutter_litert` import for these.
 * Update example app to use `HandDetector.create()` instead of `HandDetectorIsolate.spawn()`.
+* Rewrite README's Live Camera Detection section around the shared `packYuv420` + native `cv.cvtColor` pattern, and drop the "Background Isolate Detection" / "OpenCV Mat Support" sections that pointed users at the deprecated `HandDetectorIsolate`.
 
 ## 2.1.2
 

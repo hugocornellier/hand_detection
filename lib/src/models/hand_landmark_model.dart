@@ -14,6 +14,10 @@ import '../types.dart';
 /// Outputs are stored as flat [Float32List]s and passed to TFLite as their
 /// underlying [ByteBuffer], which avoids the boxed-double allocation that
 /// `Tensor.copyTo` performs when handed a nested `List<List<double>>` dst.
+///
+/// [views] caches [Float32List] views directly into the interpreter's
+/// tensor native memory, used by the direct-invoke path (i.e. when running
+/// inside an outer isolate and no nested IsolateInterpreter is active).
 class _HandBuffers {
   final Float32List inputBuffer;
   final Float32List outputLandmarks;
@@ -21,12 +25,15 @@ class _HandBuffers {
   final Float32List outputHandedness;
   final Float32List outputWorldLandmarks;
 
+  final TensorFloat32Views views;
+
   _HandBuffers({
     required this.inputBuffer,
     required this.outputLandmarks,
     required this.outputScore,
     required this.outputHandedness,
     required this.outputWorldLandmarks,
+    required this.views,
   });
 }
 
@@ -131,6 +138,7 @@ class HandLandmarkModelRunner {
         outputScore: Float32List(1),
         outputHandedness: Float32List(1),
         outputWorldLandmarks: Float32List(63),
+        views: TensorFloat32Views.capture(interp),
       );
     }
   }
@@ -204,21 +212,16 @@ class HandLandmarkModelRunner {
         handednessView = buf.outputHandedness;
       } else {
         // Direct path: write straight into the input tensor's native memory,
-        // invoke(), then read outputs as Float32List views — no marshalling.
-        final inputTensor = interp.getInputTensor(0);
-        final tensorInputView =
-            inputTensor.data.buffer.asFloat32List(0, inputSize * inputSize * 3);
-        ImageUtils.matToFloat32Tensor(paddedImage, buffer: tensorInputView);
+        // invoke(), then read outputs as Float32List views, no marshalling.
+        // Tensor views were cached at init so nothing is allocated here.
+        ImageUtils.matToFloat32Tensor(paddedImage, buffer: buf.views.inputs[0]);
 
         interp.invoke();
 
-        landmarksView =
-            interp.getOutputTensor(0).data.buffer.asFloat32List(0, 63);
-        scoreView = interp.getOutputTensor(1).data.buffer.asFloat32List(0, 1);
-        handednessView =
-            interp.getOutputTensor(2).data.buffer.asFloat32List(0, 1);
-        worldLandmarksView =
-            interp.getOutputTensor(3).data.buffer.asFloat32List(0, 63);
+        landmarksView = buf.views.outputs[0];
+        scoreView = buf.views.outputs[1];
+        handednessView = buf.views.outputs[2];
+        worldLandmarksView = buf.views.outputs[3];
       }
 
       resizedImage.dispose();
@@ -264,7 +267,7 @@ class HandLandmarkModelRunner {
     required int cropWidth,
     required int cropHeight,
   }) {
-    final score = sigmoid(scoreData[0]);
+    final score = sigmoidClipped(scoreData[0]);
     final handedness =
         handednessData[0] > 0.5 ? Handedness.right : Handedness.left;
 

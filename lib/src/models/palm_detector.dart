@@ -5,7 +5,7 @@ import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:meta/meta.dart';
 import 'package:flutter_litert/flutter_litert.dart';
 import 'package:flutter_litert/flutter_litert.dart' as litert
-    show normalizeRadians, sigmoid, weightedNms;
+    show normalizeRadians, sigmoidClipped, weightedNms;
 import '../util/image_utils.dart';
 
 /// A detected palm with rotation rectangle parameters.
@@ -79,6 +79,11 @@ class PalmDetector {
 
   /// Pre-allocated classification score output, flat Float32 view of [1, 2016, 1].
   Float32List? _scoresData;
+
+  /// Cached `Float32List` views of the input/output tensor native memory,
+  /// captured once after `allocateTensors` and reused every inference on
+  /// the direct-invoke path.
+  TensorFloat32Views? _views;
 
   /// Number of values per anchor in the box regressor output (18: cx, cy, w, h
   /// followed by 7 keypoint x/y pairs). Cached after init.
@@ -172,6 +177,11 @@ class PalmDetector {
     // Pre-allocate the input buffer eagerly so the first inference doesn't
     // pay an alloc.
     _inputBuffer = Float32List(_inH * _inW * 3);
+
+    // Cache Float32List views into the interpreter's tensor native memory
+    // for the direct-invoke path. Tensors are stable after allocateTensors()
+    // so the views remain valid for the lifetime of this detector.
+    _views = TensorFloat32Views.capture(interpreter);
   }
 
   /// Returns true if the detector has been initialized.
@@ -183,6 +193,7 @@ class PalmDetector {
     _inputBuffer = null;
     _boxesData = null;
     _scoresData = null;
+    _views = null;
     _isInitialized = false;
   }
 
@@ -229,20 +240,17 @@ class PalmDetector {
       } else {
         // Direct path (no nested isolate): write the BGR→RGB normalized
         // tensor straight into the input tensor's native memory, then
-        // invoke() and read output tensors as Float32List views — no
-        // runForMultipleInputs, no Tensor.copyTo, no marshalling.
-        final inputTensor = interp.getInputTensor(0);
-        final tensorInputView =
-            inputTensor.data.buffer.asFloat32List(0, _inH * _inW * 3);
-        ImageUtils.matToFloat32Tensor(paddedImage, buffer: tensorInputView);
+        // invoke() and read output tensors as Float32List views, no
+        // runForMultipleInputs, no Tensor.copyTo, no marshalling. The
+        // tensor views are cached at init so there is no per-inference
+        // wrapper allocation here.
+        final views = _views!;
+        ImageUtils.matToFloat32Tensor(paddedImage, buffer: views.inputs[0]);
 
         interp.invoke();
 
-        final boxesTensor = interp.getOutputTensor(0);
-        final scoresTensor = interp.getOutputTensor(1);
-        boxesView = boxesTensor.data.buffer
-            .asFloat32List(0, _anchors.length * _boxStride);
-        scoresView = scoresTensor.data.buffer.asFloat32List(0, _anchors.length);
+        boxesView = views.outputs[0];
+        scoresView = views.outputs[1];
       }
     });
 
@@ -273,7 +281,7 @@ class PalmDetector {
 
     for (int i = 0; i < numAnchors; i++) {
       final rawScore = rawScores[i];
-      final score = litert.sigmoid(rawScore);
+      final score = litert.sigmoidClipped(rawScore);
 
       if (score <= scoreThreshold) continue;
 

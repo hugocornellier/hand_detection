@@ -1,9 +1,6 @@
 import 'package:flutter_litert/flutter_litert.dart'
     show BoundingBox, LandmarkMixin;
 
-export 'package:flutter_litert/flutter_litert.dart'
-    show PerformanceMode, PerformanceConfig, Point, BoundingBox;
-
 /// Hand landmark model variant for landmark extraction.
 ///
 /// Only the full model is available to match the Python implementation.
