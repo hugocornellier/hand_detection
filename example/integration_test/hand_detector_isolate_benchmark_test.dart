@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_print, deprecated_member_use
 
-// Benchmark tests for HandDetectorIsolate (deprecated — intentional coverage).
+// Benchmark tests for HandDetectorIsolate (deprecated, intentional coverage).
 //
 // Unlike hand_detector_benchmark_test.dart (which exercises HandDetector
 // directly), this benchmark targets HandDetectorIsolate.spawn() to measure the
@@ -41,7 +41,7 @@ const List<String> sampleImages = [
 
 class BenchmarkStats {
   final String imagePath;
-  // Microsecond timings — IsolateInterpreter overhead on iOS Simulator is
+  // Microsecond timings: IsolateInterpreter overhead on iOS Simulator is
   // sub-millisecond, so elapsedMilliseconds is too coarse to detect a delta.
   final List<int> timings;
   final int imageSize;

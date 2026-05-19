@@ -428,21 +428,23 @@ class HandDetector {
   /// One-call wrapper for live camera streams: takes a `CameraImage`-shaped
   /// object directly (any object exposing `width`, `height`, and `planes` with
   /// `bytes` / `bytesPerRow` / `bytesPerPixel`) and runs YUV packing, colour
-  /// conversion, rotation, and downscale in the detection isolate — all off
+  /// conversion, rotation, and downscale in the detection isolate, all off
   /// the UI thread.
   ///
   /// Returns an empty list (not an error) when the plane shape can't be
   /// decoded. Throws at runtime if [cameraImage] doesn't expose the expected
   /// shape.
   ///
-  /// [isBgra] selects BGRA (macOS, default) vs. RGBA (Linux) for the desktop
-  /// single-plane path; ignored for YUV input.
+  /// [isBgra] selects BGRA vs. RGBA for the desktop single-plane path; ignored
+  /// for YUV input (Android/iOS). Defaults to `true` on macOS (BGRA) and
+  /// `false` on Windows/Linux (RGBA). Only pass this explicitly if you are
+  /// using a non-standard camera plugin that delivers a different format.
   ///
   /// Throws [StateError] if [initialize] has not been called.
   Future<List<Hand>> detectFromCameraImage(
     Object cameraImage, {
     CameraFrameRotation? rotation,
-    bool isBgra = true,
+    bool? isBgra,
     int? maxDim,
   }) async {
     if (!isReady) {
@@ -452,7 +454,7 @@ class HandDetector {
     final frame = prepareCameraFrameFromImage(
       cameraImage,
       rotation: rotation,
-      isBgra: isBgra,
+      isBgra: isBgra ?? Platform.isMacOS,
     );
     if (frame == null) return const <Hand>[];
     return detectFromCameraFrame(frame, maxDim: maxDim);

@@ -648,7 +648,8 @@ class _CameraScreenState extends State<CameraScreen> {
       camera,
       ResolutionPreset.medium,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
+      imageFormatGroup: ImageFormatGroup
+          .yuv420, // prevents JPEG fallback on Android; ignored on desktop
     );
     var imageStreamStarted = false;
 
