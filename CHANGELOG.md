@@ -1,3 +1,7 @@
+## 3.0.5
+
+* Update flutter_litert -> 2.5.4
+
 ## 3.0.4
 
 * Update flutter_litert to 2.5.3 and camera_desktop to 1.1.4
