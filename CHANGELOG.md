@@ -1,6 +1,6 @@
 ## 3.0.5
 
-* Update flutter_litert -> 2.5.4
+* Update flutter_litert -> 2.5.5
 
 ## 3.0.4
 
