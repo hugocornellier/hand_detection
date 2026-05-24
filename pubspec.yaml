@@ -19,7 +19,7 @@ dependencies:
   flutter:
     sdk: flutter
   opencv_dart: ^2.2.1+4
-  flutter_litert: ^2.5.5
+  flutter_litert: ^2.5.7
   meta: ^1.17.0
 
 dev_dependencies:
@@ -41,7 +41,7 @@ flutter:
       android:
         dartPluginClass: HandDetectionDart
       macos:
-        pluginClass: HandDetectionPlugin
+        dartPluginClass: HandDetectionDart
       windows:
         pluginClass: HandDetectionPlugin
       linux:
