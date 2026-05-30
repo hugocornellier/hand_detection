@@ -45,3 +45,10 @@ app.*.map.json
 
 # Exclude from pub.dev archive (referenced via GitHub URLs)
 assets/screenshots/
+
+# Example sample images: not declared as runtime assets (only assets/models is).
+example/assets/
+
+# Example Podfile (gitignored; not needed in the published tarball).
+example/**/Podfile
+example/**/Podfile.lock
