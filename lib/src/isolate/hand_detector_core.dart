@@ -66,33 +66,49 @@ class HandDetectorCore {
     required PerformanceConfig performanceConfig,
     required bool enableGestures,
     required double gestureMinConfidence,
+    bool useCompiledModel = false,
   }) async {
     _mode = mode;
     _maxDetections = maxDetections;
     _minLandmarkScore = minLandmarkScore;
 
     _palm = PalmDetector(scoreThreshold: detectorConf);
-    await _palm!.initializeFromBuffer(
-      palmDetectionBytes,
-      performanceConfig: performanceConfig,
-    );
+    if (useCompiledModel) {
+      await _palm!.initializeCompiledFromBuffer(palmDetectionBytes);
+    } else {
+      await _palm!.initializeFromBuffer(
+        palmDetectionBytes,
+        performanceConfig: performanceConfig,
+      );
+    }
 
     _lm = HandLandmarkModelRunner(poolSize: interpreterPoolSize);
-    await _lm!.initializeFromBuffer(
-      handLandmarkBytes,
-      performanceConfig: performanceConfig,
-    );
+    if (useCompiledModel) {
+      await _lm!.initializeCompiledFromBuffer(handLandmarkBytes);
+    } else {
+      await _lm!.initializeFromBuffer(
+        handLandmarkBytes,
+        performanceConfig: performanceConfig,
+      );
+    }
 
     if (enableGestures &&
         gestureEmbedderBytes != null &&
         gestureClassifierBytes != null) {
       _gestureRecognizer =
           GestureRecognizer(minConfidence: gestureMinConfidence);
-      await _gestureRecognizer!.initializeFromBuffers(
-        embedderBytes: gestureEmbedderBytes,
-        classifierBytes: gestureClassifierBytes,
-        performanceConfig: performanceConfig,
-      );
+      if (useCompiledModel) {
+        await _gestureRecognizer!.initializeCompiledFromBuffers(
+          embedderBytes: gestureEmbedderBytes,
+          classifierBytes: gestureClassifierBytes,
+        );
+      } else {
+        await _gestureRecognizer!.initializeFromBuffers(
+          embedderBytes: gestureEmbedderBytes,
+          classifierBytes: gestureClassifierBytes,
+          performanceConfig: performanceConfig,
+        );
+      }
     }
   }
 

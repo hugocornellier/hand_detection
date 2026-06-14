@@ -25,6 +25,7 @@ class _DetectionIsolateStartupData {
   final int? numThreads;
   final bool enableGestures;
   final double gestureMinConfidence;
+  final bool useCompiledModel;
 
   _DetectionIsolateStartupData({
     required this.sendPort,
@@ -42,6 +43,7 @@ class _DetectionIsolateStartupData {
     required this.numThreads,
     required this.enableGestures,
     required this.gestureMinConfidence,
+    required this.useCompiledModel,
   });
 }
 
@@ -120,6 +122,7 @@ class HandDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
     double gestureMinConfidence = 0.5,
+    bool useCompiledModel = false,
   }) async {
     final detector = HandDetector();
     await detector.initialize(
@@ -132,6 +135,7 @@ class HandDetector {
       performanceConfig: performanceConfig,
       enableGestures: enableGestures,
       gestureMinConfidence: gestureMinConfidence,
+      useCompiledModel: useCompiledModel,
     );
     return detector;
   }
@@ -160,6 +164,10 @@ class HandDetector {
   /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: auto (optimal per platform)
   /// - [enableGestures]: Whether to run gesture recognition. Default: false
   /// - [gestureMinConfidence]: Minimum confidence for gesture recognition (0.0-1.0). Default: 0.5
+  /// - [useCompiledModel]: Use the LiteRT Next [CompiledModel] engine (GPU with
+  ///   CPU fallback) instead of the classic Interpreter engine. Default: false.
+  ///   When enabled, the landmark model runs serially rather than across the
+  ///   interpreter pool, so [interpreterPoolSize] has no effect.
   Future<void> initialize({
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
@@ -170,6 +178,7 @@ class HandDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
     double gestureMinConfidence = 0.5,
+    bool useCompiledModel = false,
   }) async {
     if (isReady) {
       throw StateError('HandDetector already initialized');
@@ -224,6 +233,7 @@ class HandDetector {
       performanceConfig: performanceConfig,
       enableGestures: enableGestures,
       gestureMinConfidence: gestureMinConfidence,
+      useCompiledModel: useCompiledModel,
     );
   }
 
@@ -262,6 +272,7 @@ class HandDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
     double gestureMinConfidence = 0.5,
+    bool useCompiledModel = false,
   }) async {
     if (isReady) {
       throw StateError('HandDetector already initialized');
@@ -288,6 +299,7 @@ class HandDetector {
         performanceConfig: performanceConfig,
         enableGestures: enableGestures,
         gestureMinConfidence: gestureMinConfidence,
+        useCompiledModel: useCompiledModel,
       );
     } catch (e) {
       if (worker.isReady) {
@@ -551,6 +563,7 @@ class HandDetector {
         ),
         enableGestures: data.enableGestures,
         gestureMinConfidence: data.gestureMinConfidence,
+        useCompiledModel: data.useCompiledModel,
       );
 
       mainSendPort.send(workerReceivePort.sendPort);
@@ -608,7 +621,7 @@ class HandDetector {
             final int height = message['height'] as int;
             final int matTypeValue = message['matType'] as int;
             final matType = cv.MatType(matTypeValue);
-            final mat = cv.Mat.fromList(height, width, matType, matBytes);
+            final mat = _matFromBytes(height, width, matType, matBytes);
             try {
               final hands = await core!.detectDirect(mat);
               mainSendPort.send({
@@ -654,6 +667,24 @@ class HandDetector {
         mainSendPort.send({'id': id, 'error': '$e\n$st'});
       }
     });
+  }
+
+  /// Reconstructs a [cv.Mat] from raw frame bytes WITHOUT the boxed,
+  /// double-copy `cv.Mat.fromList` path. `Mat.fromList` takes a `List<num>`, so
+  /// it boxes every byte and copies the data twice — ~100x slower for
+  /// full-resolution frames and the dominant per-frame cost in the detection
+  /// isolate. Allocating once with `Mat.create` and bulk-copying into the Mat's
+  /// contiguous native data view (a `Uint8List.setRange`/memmove) is byte
+  /// identical and ~100x faster.
+  static cv.Mat _matFromBytes(
+    int rows,
+    int cols,
+    cv.MatType type,
+    Uint8List bytes,
+  ) {
+    final mat = cv.Mat.create(rows: rows, cols: cols, type: type);
+    mat.data.setRange(0, bytes.length, bytes);
+    return mat;
   }
 
   /// Decodes a [CameraFrame] isolate message into a 3-channel BGR [cv.Mat],
@@ -711,7 +742,7 @@ class HandDetector {
       case CameraFrameConversion.bgra2bgr:
       case CameraFrameConversion.rgba2bgr:
         final bgraOrRgba =
-            cv.Mat.fromList(height, strideCols, cv.MatType.CV_8UC4, bytes);
+            _matFromBytes(height, strideCols, cv.MatType.CV_8UC4, bytes);
         cv.Mat current = strideCols != width
             ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
             : bgraOrRgba;
@@ -747,7 +778,7 @@ class HandDetector {
       case CameraFrameConversion.yuv2bgrNv12:
       case CameraFrameConversion.yuv2bgrNv21:
       case CameraFrameConversion.yuv2bgrI420:
-        final yuvMat = cv.Mat.fromList(
+        final yuvMat = _matFromBytes(
           height + height ~/ 2,
           width,
           cv.MatType.CV_8UC1,
@@ -786,6 +817,7 @@ class _HandDetectorWorker extends IsolateWorkerBase {
     required PerformanceConfig performanceConfig,
     required bool enableGestures,
     required double gestureMinConfidence,
+    required bool useCompiledModel,
   }) async {
     TransferableTypedData? gestureEmbedderData;
     TransferableTypedData? gestureClassifierData;
@@ -819,6 +851,7 @@ class _HandDetectorWorker extends IsolateWorkerBase {
           numThreads: performanceConfig.numThreads,
           enableGestures: enableGestures,
           gestureMinConfidence: gestureMinConfidence,
+          useCompiledModel: useCompiledModel,
         ),
         debugName: 'HandDetector',
       ),

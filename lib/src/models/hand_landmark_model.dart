@@ -59,6 +59,22 @@ class HandLandmarkModelRunner {
   /// Input dimensions (224x224 for MediaPipe hand landmark model).
   static const int inputSize = 224;
 
+  /// LiteRT Next [CompiledModel] engine (GPU with CPU fallback), used instead
+  /// of the [InterpreterPool] when initialized via
+  /// [initializeCompiledFromBuffer]. Non-null selects the compiled path, which
+  /// runs serially (one hand at a time) rather than across pool slots.
+  CompiledModel? _compiled;
+
+  /// Scratch input buffer for the CompiledModel path.
+  Float32List? _compiledInput;
+
+  /// CompiledModel output indices. The MediaPipe hand-landmark model emits, in
+  /// order: landmarks (63), score (1), handedness (1), world landmarks (63).
+  static const int _cmLmIdx = 0;
+  static const int _cmScoreIdx = 1;
+  static const int _cmHandIdx = 2;
+  static const int _cmWorldIdx = 3;
+
   /// Creates a landmark model runner with the specified pool size.
   HandLandmarkModelRunner({int poolSize = 1})
       : _pool = InterpreterPool(poolSize: poolSize);
@@ -115,6 +131,62 @@ class HandLandmarkModelRunner {
     );
   }
 
+  /// Initializes the hand landmark model from pre-loaded bytes using the LiteRT
+  /// Next [CompiledModel] engine (GPU with CPU fallback) instead of the
+  /// Interpreter pool.
+  ///
+  /// Used inside the detection isolate when CompiledModel is requested. Throws
+  /// [UnsupportedError] if the model's I/O shapes do not match the expected
+  /// 224x224 input / [63,1,1,63] output layout (the caller falls back to the
+  /// Interpreter engine).
+  Future<void> initializeCompiledFromBuffer(Uint8List modelBytes) async {
+    if (_isInitialized) await dispose();
+    final compiled = CompiledModel.fromBufferWithGpuFallback(modelBytes);
+    try {
+      _setupCompiled(compiled);
+    } catch (_) {
+      compiled.close();
+      rethrow;
+    }
+    _compiled = compiled;
+    _compiledInput = Float32List(inputSize * inputSize * 3);
+    _isInitialized = true;
+  }
+
+  void _setupCompiled(CompiledModel compiled) {
+    if (compiled.inputCount != 1) {
+      throw UnsupportedError(
+        'Compiled hand landmark expects one input tensor; got '
+        '${compiled.inputCount}.',
+      );
+    }
+    final int inputFloats = compiled.inputByteSizes.single ~/ 4;
+    final int expected = inputSize * inputSize * 3;
+    if (inputFloats != expected) {
+      throw UnsupportedError(
+        'Compiled hand landmark input has $inputFloats floats; expected '
+        '$expected for [1, $inputSize, $inputSize, 3].',
+      );
+    }
+    if (compiled.outputCount < 4) {
+      throw UnsupportedError(
+        'Compiled hand landmark expects at least four outputs; got '
+        '${compiled.outputCount}.',
+      );
+    }
+    int floats(int i) => compiled.outputByteSizes[i] ~/ 4;
+    const int lmFloats = numHandLandmarks * 3;
+    if (floats(_cmLmIdx) != lmFloats ||
+        floats(_cmWorldIdx) != lmFloats ||
+        floats(_cmScoreIdx) != 1 ||
+        floats(_cmHandIdx) != 1) {
+      throw UnsupportedError(
+        'Compiled hand landmark output sizes do not match the expected '
+        '[landmarks=$lmFloats, score=1, handedness=1, world=$lmFloats] layout.',
+      );
+    }
+  }
+
   Future<void> _initializePool({
     required PerformanceConfig? performanceConfig,
     required Future<Interpreter> Function(InterpreterOptions) loader,
@@ -153,6 +225,9 @@ class HandLandmarkModelRunner {
   Future<void> dispose() async {
     await _pool.dispose();
     _buffers.clear();
+    _compiled?.close();
+    _compiled = null;
+    _compiledInput = null;
     _isInitialized = false;
   }
 
@@ -171,6 +246,10 @@ class HandLandmarkModelRunner {
     if (!_isInitialized) {
       throw StateError(
           'HandLandmarkModelRunner not initialized. Call initialize() first.');
+    }
+
+    if (_compiled != null) {
+      return _runCompiled(roiImage);
     }
 
     return _pool.withInterpreter((interp, iso) async {
@@ -240,6 +319,44 @@ class HandLandmarkModelRunner {
         cropHeight: roiImage.rows,
       );
     });
+  }
+
+  /// CompiledModel (LiteRT Next) variant of [run]. Runs serially (no pool) with
+  /// the same [0,1] RGB preprocessing and landmark parsing as the Interpreter
+  /// path; only the inference dispatch differs.
+  Future<HandLandmarks> _runCompiled(cv.Mat roiImage) async {
+    final (paddedImage, resizedImage) = ImageUtils.keepAspectResizeAndPad(
+      roiImage,
+      inputSize,
+      inputSize,
+    );
+
+    final resizeScaleH = resizedImage.rows / roiImage.rows;
+    final resizeScaleW = resizedImage.cols / roiImage.cols;
+    final padH = paddedImage.rows - resizedImage.rows;
+    final padW = paddedImage.cols - resizedImage.cols;
+    final halfPadH = math.max(0, padH ~/ 2).toDouble();
+    final halfPadW = math.max(0, padW ~/ 2).toDouble();
+
+    final input = _compiledInput!;
+    ImageUtils.matToFloat32Tensor(paddedImage, buffer: input);
+    final outs = await _compiled!.runAsync([input]);
+
+    resizedImage.dispose();
+    paddedImage.dispose();
+
+    return _parseLandmarks(
+      outs[_cmLmIdx],
+      outs[_cmWorldIdx],
+      outs[_cmScoreIdx],
+      outs[_cmHandIdx],
+      halfPadW: halfPadW,
+      halfPadH: halfPadH,
+      resizeScaleW: resizeScaleW,
+      resizeScaleH: resizeScaleH,
+      cropWidth: roiImage.cols,
+      cropHeight: roiImage.rows,
+    );
   }
 
   /// Parses model outputs into HandLandmarks.

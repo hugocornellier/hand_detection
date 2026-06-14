@@ -78,49 +78,14 @@
 /// - Pinky: MCP (17), PIP (18), DIP (19), Tip (20)
 library;
 
-export 'src/types.dart';
-export 'src/ui/hand_overlay.dart';
-export 'src/hand_detector.dart' show HandDetector;
-export 'src/isolate/hand_detector_isolate.dart' show HandDetectorIsolate;
-export 'src/models/palm_detector.dart' show PalmDetection;
-export 'src/dart_registration.dart';
-
-// Re-export cv.Mat for users who want to use detectFromMat directly
-export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
-
-export 'package:flutter_litert/flutter_litert.dart'
-    show
-        PerformanceMode,
-        PerformanceConfig,
-        createNHWCTensor4D,
-        fillNHWC4D,
-        allocTensorShape,
-        flattenDynamicTensor,
-        sigmoid,
-        sigmoidClipped,
-        clamp01,
-        clip,
-        computeLetterboxParams,
-        LetterboxParams,
-        bgrBytesToRgbFloat32,
-        bgrBytesToSignedFloat32,
-        Point,
-        BoundingBox,
-        packYuv420,
-        YuvPlane,
-        YuvLayout,
-        PackedYuv,
-        CameraPlane,
-        CameraFrame,
-        CameraFrameConversion,
-        CameraFrameRotation,
-        prepareCameraFrame,
-        prepareCameraFrameFromImage,
-        rotationForFrame,
-        detectionSize,
-        coverFitScaleOffset,
-        barQuarterTurns,
-        FpsCounter,
-        drawLandmarkMarker,
-        drawSkeletonConnections,
-        drawBoundingBoxOutline;
+// Public entry point. Conditionally re-exports the native or web
+// implementation depending on the host platform:
+// - Web (Chrome / Edge / Firefox / Safari): web implementation backed by
+//   LiteRT.js (auto WebGPU/WASM) and Canvas preprocessing.
+// - Everything else (mobile, desktop): the native implementation backed by
+//   `flutter_litert` + `opencv_dart`, running inference in a background isolate.
+//
+// Both aggregators re-export the same shared pure-Dart types, overlay helpers,
+// and flutter_litert utilities, so user code sees one API on every platform.
+export 'src/native/hand_native_lib.dart'
+    if (dart.library.js_interop) 'src/web/hand_web_lib.dart';

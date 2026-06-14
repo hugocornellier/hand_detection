@@ -32,6 +32,12 @@ class GestureRecognizer {
   final InterpreterPool _embedderPool = InterpreterPool(poolSize: 1);
   final InterpreterPool _classifierPool = InterpreterPool(poolSize: 1);
 
+  /// LiteRT Next [CompiledModel] engines (GPU with CPU fallback) used instead
+  /// of the interpreter pools when initialized via
+  /// [initializeCompiledFromBuffers].
+  CompiledModel? _embedderCompiled;
+  CompiledModel? _classifierCompiled;
+
   bool _isInitialized = false;
 
   /// Minimum confidence threshold for returning a gesture.
@@ -106,6 +112,71 @@ class GestureRecognizer {
     );
   }
 
+  /// Initializes the gesture recognizer from pre-loaded bytes using the LiteRT
+  /// Next [CompiledModel] engine (GPU with CPU fallback) for both the embedder
+  /// and classifier, instead of the interpreter pools.
+  ///
+  /// Throws [UnsupportedError] if either model's I/O shapes do not match the
+  /// expected gesture layout (the caller falls back to the Interpreter engine).
+  Future<void> initializeCompiledFromBuffers({
+    required Uint8List embedderBytes,
+    required Uint8List classifierBytes,
+  }) async {
+    if (_isInitialized) await dispose();
+
+    final embedder = CompiledModel.fromBufferWithGpuFallback(embedderBytes);
+    CompiledModel? classifier;
+    try {
+      classifier = CompiledModel.fromBufferWithGpuFallback(classifierBytes);
+      _validateCompiled(embedder, classifier);
+    } catch (_) {
+      embedder.close();
+      classifier?.close();
+      rethrow;
+    }
+
+    _embedderCompiled = embedder;
+    _classifierCompiled = classifier;
+    _allocateBuffers();
+    _isInitialized = true;
+  }
+
+  void _validateCompiled(CompiledModel embedder, CompiledModel classifier) {
+    // Embedder: 3 inputs (hand landmarks 63, handedness 1, world landmarks 63),
+    // 1 output (embedding 128). Classifier: 1 input (embedding 128),
+    // 1 output (gesture probabilities 8).
+    const int lmFloats = 21 * 3;
+    if (embedder.inputCount != 3) {
+      throw UnsupportedError(
+        'Compiled gesture embedder expects three inputs; got '
+        '${embedder.inputCount}.',
+      );
+    }
+    int embIn(int i) => embedder.inputByteSizes[i] ~/ 4;
+    if (embIn(0) != lmFloats || embIn(1) != 1 || embIn(2) != lmFloats) {
+      throw UnsupportedError(
+        'Compiled gesture embedder input sizes do not match the expected '
+        '[$lmFloats, 1, $lmFloats] layout.',
+      );
+    }
+    if (embedder.outputCount < 1 || embedder.outputByteSizes[0] ~/ 4 != 128) {
+      throw UnsupportedError(
+        'Compiled gesture embedder must output a 128-d embedding.',
+      );
+    }
+    if (classifier.inputCount != 1 ||
+        classifier.inputByteSizes.single ~/ 4 != 128) {
+      throw UnsupportedError(
+        'Compiled gesture classifier must take a 128-d embedding input.',
+      );
+    }
+    if (classifier.outputCount < 1 || classifier.outputByteSizes[0] ~/ 4 != 8) {
+      throw UnsupportedError(
+        'Compiled gesture classifier must output 8 gesture probabilities.',
+      );
+    }
+  }
+
   Future<void> _initializeWith({
     required PerformanceConfig? performanceConfig,
     required Future<Interpreter> Function(InterpreterOptions) embedderLoader,
@@ -151,6 +222,10 @@ class GestureRecognizer {
   Future<void> dispose() async {
     await _embedderPool.dispose();
     await _classifierPool.dispose();
+    _embedderCompiled?.close();
+    _embedderCompiled = null;
+    _classifierCompiled?.close();
+    _classifierCompiled = null;
     _isInitialized = false;
   }
 
@@ -199,31 +274,44 @@ class GestureRecognizer {
       _worldHandInput[base + 2] = worldLandmarks[i].z;
     }
 
-    final embedderInputs = <Object>[
-      _handInput.buffer,
-      _handednessInput.buffer,
-      _worldHandInput.buffer,
-    ];
-    final embedderOutputs = <int, Object>{0: _embeddingOutput.buffer};
-    await _embedderPool.withInterpreter((interp, iso) async {
-      if (iso != null) {
-        await iso.runForMultipleInputs(embedderInputs, embedderOutputs);
-      } else {
-        interp.runForMultipleInputs(embedderInputs, embedderOutputs);
-      }
-    });
+    final Float32List probs;
+    final embedder = _embedderCompiled;
+    if (embedder != null) {
+      // CompiledModel (LiteRT Next) path: embed the landmark vectors, then
+      // classify the embedding. runAsync returns fresh Float32List outputs.
+      final embOut = await embedder.runAsync(
+        <Float32List>[_handInput, _handednessInput, _worldHandInput],
+      );
+      final clsOut =
+          await _classifierCompiled!.runAsync(<Float32List>[embOut[0]]);
+      probs = clsOut[0];
+    } else {
+      final embedderInputs = <Object>[
+        _handInput.buffer,
+        _handednessInput.buffer,
+        _worldHandInput.buffer,
+      ];
+      final embedderOutputs = <int, Object>{0: _embeddingOutput.buffer};
+      await _embedderPool.withInterpreter((interp, iso) async {
+        if (iso != null) {
+          await iso.runForMultipleInputs(embedderInputs, embedderOutputs);
+        } else {
+          interp.runForMultipleInputs(embedderInputs, embedderOutputs);
+        }
+      });
 
-    final classifierInputs = <Object>[_embeddingOutput.buffer];
-    final classifierOutputs = <int, Object>{0: _gestureOutput.buffer};
-    await _classifierPool.withInterpreter((interp, iso) async {
-      if (iso != null) {
-        await iso.runForMultipleInputs(classifierInputs, classifierOutputs);
-      } else {
-        interp.runForMultipleInputs(classifierInputs, classifierOutputs);
-      }
-    });
+      final classifierInputs = <Object>[_embeddingOutput.buffer];
+      final classifierOutputs = <int, Object>{0: _gestureOutput.buffer};
+      await _classifierPool.withInterpreter((interp, iso) async {
+        if (iso != null) {
+          await iso.runForMultipleInputs(classifierInputs, classifierOutputs);
+        } else {
+          interp.runForMultipleInputs(classifierInputs, classifierOutputs);
+        }
+      });
+      probs = _gestureOutput;
+    }
 
-    final probs = _gestureOutput;
     var maxIdx = 0;
     for (int i = 1; i < 8; i++) {
       if (probs[i] > probs[maxIdx]) maxIdx = i;

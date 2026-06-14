@@ -4,38 +4,14 @@ import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:meta/meta.dart';
 import 'package:flutter_litert/flutter_litert.dart';
-import 'package:flutter_litert/flutter_litert.dart' as litert
-    show normalizeRadians, sigmoidClipped, weightedNms;
+import '../shared/hand_geometry.dart';
 import '../util/image_utils.dart';
 
-/// A detected palm with rotation rectangle parameters.
-///
-/// Used to crop and rotate hand regions for landmark extraction.
-class PalmDetection {
-  /// Size of the square rotation rectangle (normalized).
-  final double sqnRrSize;
-
-  /// Rotation angle in radians.
-  final double rotation;
-
-  /// Center X coordinate (normalized 0-1).
-  final double sqnRrCenterX;
-
-  /// Center Y coordinate (normalized 0-1).
-  final double sqnRrCenterY;
-
-  /// Detection confidence score (0.0 to 1.0).
-  final double score;
-
-  /// Creates a palm detection result.
-  const PalmDetection({
-    required this.sqnRrSize,
-    required this.rotation,
-    required this.sqnRrCenterX,
-    required this.sqnRrCenterY,
-    required this.score,
-  });
-}
+// The [PalmDetection] result type and the pure-Dart box decoding /
+// post-processing live in `shared/hand_geometry.dart` so the web implementation
+// can reuse them. Re-exported here so existing `palm_detector.dart` importers
+// keep seeing [PalmDetection].
+export '../shared/hand_geometry.dart' show PalmDetection;
 
 /// SSD-based palm detector for Stage 1 of the hand detection pipeline.
 ///
@@ -89,6 +65,16 @@ class PalmDetector {
   /// followed by 7 keypoint x/y pairs). Cached after init.
   int _boxStride = 18;
 
+  /// LiteRT Next [CompiledModel] engine (GPU with CPU fallback), used instead
+  /// of the [InterpreterPool] when initialized via
+  /// [initializeCompiledFromBuffer]. Non-null selects the compiled path.
+  CompiledModel? _compiled;
+
+  /// CompiledModel output indices, resolved from output byte sizes at init
+  /// (the boxes output is `stride` floats per anchor; scores is one per anchor).
+  int _cmBoxesIdx = 0;
+  int _cmScoresIdx = 1;
+
   /// Creates a palm detector with the specified score threshold.
   PalmDetector({this.scoreThreshold = 0.45});
 
@@ -120,6 +106,28 @@ class PalmDetector {
     );
   }
 
+  /// Initializes the palm detector from pre-loaded bytes using the LiteRT Next
+  /// [CompiledModel] engine (GPU with CPU fallback) instead of the classic
+  /// Interpreter pool.
+  ///
+  /// Used inside the detection isolate when CompiledModel is requested. Input
+  /// size and box stride are derived from the compiled model's tensor byte
+  /// sizes. Throws [UnsupportedError] if the model's I/O shapes are not the
+  /// expected square-input / anchor-aligned-output palm layout (the caller
+  /// falls back to the Interpreter engine).
+  Future<void> initializeCompiledFromBuffer(Uint8List modelBytes) async {
+    if (_isInitialized) await dispose();
+    final compiled = CompiledModel.fromBufferWithGpuFallback(modelBytes);
+    try {
+      _setupCompiled(compiled);
+    } catch (_) {
+      compiled.close();
+      rethrow;
+    }
+    _compiled = compiled;
+    _isInitialized = true;
+  }
+
   Future<void> _initWith(
     Future<Interpreter> Function(InterpreterOptions) loader,
     PerformanceConfig? performanceConfig, {
@@ -145,21 +153,7 @@ class PalmDetector {
     _inH = inShape[1];
     _inW = inShape[2];
 
-    final anchorOptions = SSDAnchorOptions(
-      numLayers: 4,
-      minScale: 0.1484375,
-      maxScale: 0.75,
-      inputSizeHeight: _inH,
-      inputSizeWidth: _inW,
-      anchorOffsetX: 0.5,
-      anchorOffsetY: 0.5,
-      strides: [8, 16, 16, 16],
-      aspectRatios: [1.0],
-      reduceBoxesInLowestLayer: false,
-      interpolatedScaleAspectRatio: 1.0,
-      fixedAnchorSize: true,
-    );
-    _anchors = generateAnchors(anchorOptions);
+    _anchors = buildPalmAnchors(_inH, _inW);
 
     final numAnchors = _anchors.length;
 
@@ -184,12 +178,71 @@ class PalmDetector {
     _views = TensorFloat32Views.capture(interpreter);
   }
 
+  /// Derives input size, anchors, and box stride from a [CompiledModel]'s
+  /// tensor byte sizes (there is no Interpreter to query shapes from).
+  void _setupCompiled(CompiledModel compiled) {
+    if (compiled.inputCount != 1) {
+      throw UnsupportedError(
+        'Compiled palm detection expects one input tensor; got '
+        '${compiled.inputCount}.',
+      );
+    }
+    final int inputFloats = compiled.inputByteSizes.single ~/ 4;
+    if (inputFloats <= 0 || inputFloats % 3 != 0) {
+      throw UnsupportedError(
+        'Compiled palm detection input has $inputFloats floats; expected a '
+        'square [1, S, S, 3] tensor.',
+      );
+    }
+    final int side = math.sqrt(inputFloats ~/ 3).round();
+    if (side * side * 3 != inputFloats) {
+      throw UnsupportedError(
+        'Compiled palm detection input is not square; got $inputFloats floats.',
+      );
+    }
+    _inH = side;
+    _inW = side;
+    _anchors = buildPalmAnchors(_inH, _inW);
+    final int numAnchors = _anchors.length;
+
+    if (compiled.outputCount < 2) {
+      throw UnsupportedError(
+        'Compiled palm detection expects at least two outputs; got '
+        '${compiled.outputCount}.',
+      );
+    }
+    final int out0 = compiled.outputByteSizes[0] ~/ 4;
+    final int out1 = compiled.outputByteSizes[1] ~/ 4;
+    // Scores carry one value per anchor; boxes carry `stride` values per anchor.
+    // Resolve the index order from the byte sizes so we do not assume it.
+    if (out1 == numAnchors && out0 % numAnchors == 0) {
+      _cmBoxesIdx = 0;
+      _cmScoresIdx = 1;
+      _boxStride = out0 ~/ numAnchors;
+    } else if (out0 == numAnchors && out1 % numAnchors == 0) {
+      _cmBoxesIdx = 1;
+      _cmScoresIdx = 0;
+      _boxStride = out1 ~/ numAnchors;
+    } else {
+      throw UnsupportedError(
+        'Compiled palm detection outputs ($out0, $out1 floats) do not align '
+        'with $numAnchors anchors.',
+      );
+    }
+
+    _boxesData = Float32List(numAnchors * _boxStride);
+    _scoresData = Float32List(numAnchors);
+    _inputBuffer = Float32List(_inH * _inW * 3);
+  }
+
   /// Returns true if the detector has been initialized.
   bool get isInitialized => _isInitialized;
 
   /// Disposes the detector and releases resources.
   Future<void> dispose() async {
     await _pool.dispose();
+    _compiled?.close();
+    _compiled = null;
     _inputBuffer = null;
     _boxesData = null;
     _scoresData = null;
@@ -221,7 +274,18 @@ class PalmDetector {
     late Float32List boxesView;
     late Float32List scoresView;
 
-    await _pool.withInterpreter((interp, iso) async {
+    final compiled = _compiled;
+    if (compiled != null) {
+      // CompiledModel (LiteRT Next) path: preprocess into the scratch input
+      // buffer, then runAsync returns fresh Float32List outputs we decode
+      // directly. Same [0,1] RGB preprocessing as the Interpreter path.
+      final input = _inputBuffer!;
+      ImageUtils.matToFloat32Tensor(paddedImage, buffer: input);
+      final outputs = await compiled.runAsync([input]);
+      boxesView = outputs[_cmBoxesIdx];
+      scoresView = outputs[_cmScoresIdx];
+    } else {
+      await _pool.withInterpreter((interp, iso) async {
       if (iso != null) {
         // IsolateInterpreter path: must go through runForMultipleInputs.
         // Convert into our scratch _inputBuffer first, then ship its
@@ -252,160 +316,26 @@ class PalmDetector {
         boxesView = views.outputs[0];
         scoresView = views.outputs[1];
       }
-    });
+      });
+    }
 
     resizedImage.dispose();
     paddedImage.dispose();
 
-    final decodedBoxes = _decodeBoxes(boxesView, scoresView);
-    return _postprocess(decodedBoxes);
-  }
-
-  /// Decodes raw box predictions using anchors.
-  ///
-  /// Returns decoded boxes as [score, cx, cy, boxSize, kp0X, kp0Y, kp2X, kp2Y].
-  ///
-  /// Reads directly from flat Float32List outputs to avoid the boxed-double
-  /// overhead of nested `List<List<double>>`. Raw box layout per anchor:
-  /// [cx, cy, w, h, kp0_x, kp0_y, kp1_x, kp1_y, kp2_x, kp2_y, ...] where
-  /// each value is offset relative to anchor, scaled by 192.
-  List<List<double>> _decodeBoxes(
-    Float32List rawBoxes,
-    Float32List rawScores, {
-    double scale = 192.0,
-  }) {
-    final results = <List<double>>[];
-    final invScale = 1.0 / scale;
-    final numAnchors = rawScores.length;
-    final stride = _boxStride;
-
-    for (int i = 0; i < numAnchors; i++) {
-      final rawScore = rawScores[i];
-      final score = litert.sigmoidClipped(rawScore);
-
-      if (score <= scoreThreshold) continue;
-
-      final base = i * stride;
-      final anchor = _anchors[i];
-
-      final anchorW = anchor[2];
-      final anchorH = anchor[3];
-      final anchorX = anchor[0];
-      final anchorY = anchor[1];
-
-      final cx = rawBoxes[base] * anchorW * invScale + anchorX;
-      final cy = rawBoxes[base + 1] * anchorH * invScale + anchorY;
-
-      final wPoint = rawBoxes[base + 2] * anchorW * invScale + anchorX;
-      final hPoint = rawBoxes[base + 3] * anchorH * invScale + anchorY;
-      final w = wPoint - anchorX;
-      final h = hPoint - anchorY;
-      final boxSize = math.max(w, h);
-
-      final kp0X = rawBoxes[base + 4] * anchorW * invScale + anchorX;
-      final kp0Y = rawBoxes[base + 5] * anchorH * invScale + anchorY;
-
-      final kp2X = rawBoxes[base + 8] * anchorW * invScale + anchorX;
-      final kp2Y = rawBoxes[base + 9] * anchorH * invScale + anchorY;
-
-      results.add([score, cx, cy, boxSize, kp0X, kp0Y, kp2X, kp2Y]);
-    }
-
-    return results;
-  }
-
-  /// Post-processes decoded boxes to produce palm detections.
-  ///
-  /// Transforms coordinates from model space back to original image space,
-  /// accounting for the padding applied during preprocessing.
-  /// Matches Python's __postprocess implementation.
-  List<PalmDetection> _postprocess(List<List<double>> boxes) {
-    if (boxes.isEmpty) return [];
-
-    final palms = <PalmDetection>[];
-
-    for (final box in boxes) {
-      final pdScore = box[0];
-      final boxX = box[1];
-      final boxY = box[2];
-      final boxSize = box[3];
-      final kp0X = box[4];
-      final kp0Y = box[5];
-      final kp2X = box[6];
-      final kp2Y = box[7];
-
-      if (boxSize > 0) {
-        final kp02X = kp2X - kp0X;
-        final kp02Y = kp2Y - kp0Y;
-        var sqnRrSize = 2.9 * boxSize;
-        var rotation = 0.5 * math.pi - math.atan2(-kp02Y, kp02X);
-        rotation = litert.normalizeRadians(rotation);
-        var sqnRrCenterX = boxX + 0.5 * boxSize * math.sin(rotation);
-        var sqnRrCenterY = boxY - 0.5 * boxSize * math.cos(rotation);
-
-        if (_imageHeight > _imageWidth) {
-          sqnRrCenterX =
-              (sqnRrCenterX * _squareStandardSize - _squarePaddingHalfSize) /
-                  _imageWidth;
-        } else {
-          sqnRrCenterY =
-              (sqnRrCenterY * _squareStandardSize - _squarePaddingHalfSize) /
-                  _imageHeight;
-        }
-
-        palms.add(PalmDetection(
-          sqnRrSize: sqnRrSize,
-          rotation: rotation,
-          sqnRrCenterX: sqnRrCenterX,
-          sqnRrCenterY: sqnRrCenterY,
-          score: pdScore,
-        ));
-      }
-    }
-
-    return _nms(palms);
-  }
-
-  /// Weighted Non-Maximum Suppression for palm detections.
-  ///
-  /// Fuses overlapping boxes by score-weighted coordinate averaging,
-  /// producing tighter bounding boxes from the many overlapping SSD anchors
-  /// that fire on the same palm. Keeps the highest-scoring detection's
-  /// rotation (derived from keypoints) while averaging center and size.
-  List<PalmDetection> _nms(List<PalmDetection> palms,
-      {double iouThreshold = 0.45}) {
-    if (palms.isEmpty) return palms;
-    final sorted = List<PalmDetection>.from(palms)
-      ..sort((a, b) => b.score.compareTo(a.score));
-    final boxes = sorted.map(_palmToXYXY).toList();
-    final scores = sorted.map((p) => p.score).toList();
-    final results = litert.weightedNms(boxes, scores, iouThres: iouThreshold);
-    final maxDim = math.max(_imageWidth, _imageHeight).toDouble();
-    return [
-      for (final r in results)
-        PalmDetection(
-          sqnRrSize:
-              math.max(r.box[2] - r.box[0], r.box[3] - r.box[1]) / maxDim,
-          rotation: sorted[r.index].rotation,
-          sqnRrCenterX: (r.box[0] + r.box[2]) / 2 / _imageWidth,
-          sqnRrCenterY: (r.box[1] + r.box[3]) / 2 / _imageHeight,
-          score: r.score,
-        ),
-    ];
-  }
-
-  /// Converts a PalmDetection to an XYXY bounding box [left, top, right, bottom].
-  List<double> _palmToXYXY(PalmDetection p) {
-    final maxDim = math.max(_imageWidth, _imageHeight).toDouble();
-    final halfSize = (p.sqnRrSize * maxDim) / 2;
-    final centerX = p.sqnRrCenterX * _imageWidth;
-    final centerY = p.sqnRrCenterY * _imageHeight;
-    return [
-      centerX - halfSize,
-      centerY - halfSize,
-      centerX + halfSize,
-      centerY + halfSize,
-    ];
+    final decodedBoxes = decodePalmBoxes(
+      boxesView,
+      scoresView,
+      _anchors,
+      _boxStride,
+      scoreThreshold,
+    );
+    return postprocessPalms(
+      decodedBoxes,
+      imageWidth: _imageWidth,
+      imageHeight: _imageHeight,
+      squareStandardSize: _squareStandardSize,
+      squarePaddingHalfSize: _squarePaddingHalfSize,
+    );
   }
 
   /// Exposes anchor generation for testing.
