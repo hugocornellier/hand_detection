@@ -51,7 +51,8 @@ class HandLandmarkModelWeb {
 
     final String resolved =
         liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
-    _liteRtItp = await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved);
+    _liteRtItp =
+        await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved);
     _activeAccelerator = resolved;
 
     final inT = _liteRtItp!.getInputTensor(0);
@@ -111,8 +112,13 @@ class HandLandmarkModelWeb {
   /// Runs the landmark model on a rotation-aware crop centered at ([cx], [cy])
   /// with side [size] and rotation [theta] (radians). Landmarks come back in
   /// the model's input pixel space; the caller inverts the crop transform.
-  Future<({Float32List landmarks, Float32List world, double score, double handedness})>
-      runOnCrop(
+  Future<
+      ({
+        Float32List landmarks,
+        Float32List world,
+        double score,
+        double handedness
+      })> runOnCrop(
     JSObject canvasSource, {
     required double cx,
     required double cy,

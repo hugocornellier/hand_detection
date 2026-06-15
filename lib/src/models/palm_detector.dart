@@ -181,25 +181,7 @@ class PalmDetector {
   /// Derives input size, anchors, and box stride from a [CompiledModel]'s
   /// tensor byte sizes (there is no Interpreter to query shapes from).
   void _setupCompiled(CompiledModel compiled) {
-    if (compiled.inputCount != 1) {
-      throw UnsupportedError(
-        'Compiled palm detection expects one input tensor; got '
-        '${compiled.inputCount}.',
-      );
-    }
-    final int inputFloats = compiled.inputByteSizes.single ~/ 4;
-    if (inputFloats <= 0 || inputFloats % 3 != 0) {
-      throw UnsupportedError(
-        'Compiled palm detection input has $inputFloats floats; expected a '
-        'square [1, S, S, 3] tensor.',
-      );
-    }
-    final int side = math.sqrt(inputFloats ~/ 3).round();
-    if (side * side * 3 != inputFloats) {
-      throw UnsupportedError(
-        'Compiled palm detection input is not square; got $inputFloats floats.',
-      );
-    }
+    final int side = compiledSquareInputSide(compiled, label: 'palm detection');
     _inH = side;
     _inW = side;
     _anchors = buildPalmAnchors(_inH, _inW);
@@ -286,36 +268,36 @@ class PalmDetector {
       scoresView = outputs[_cmScoresIdx];
     } else {
       await _pool.withInterpreter((interp, iso) async {
-      if (iso != null) {
-        // IsolateInterpreter path: must go through runForMultipleInputs.
-        // Convert into our scratch _inputBuffer first, then ship its
-        // ByteBuffer to the iso. Outputs land in _boxesData / _scoresData
-        // via the ByteBuffer fast branch of Tensor.copyTo.
-        ImageUtils.matToFloat32Tensor(paddedImage, buffer: _inputBuffer);
-        await iso.runForMultipleInputs(
-          [_inputBuffer!.buffer],
-          <int, Object>{
-            0: _boxesData!.buffer,
-            1: _scoresData!.buffer,
-          },
-        );
-        boxesView = _boxesData!;
-        scoresView = _scoresData!;
-      } else {
-        // Direct path (no nested isolate): write the BGR→RGB normalized
-        // tensor straight into the input tensor's native memory, then
-        // invoke() and read output tensors as Float32List views, no
-        // runForMultipleInputs, no Tensor.copyTo, no marshalling. The
-        // tensor views are cached at init so there is no per-inference
-        // wrapper allocation here.
-        final views = _views!;
-        ImageUtils.matToFloat32Tensor(paddedImage, buffer: views.inputs[0]);
+        if (iso != null) {
+          // IsolateInterpreter path: must go through runForMultipleInputs.
+          // Convert into our scratch _inputBuffer first, then ship its
+          // ByteBuffer to the iso. Outputs land in _boxesData / _scoresData
+          // via the ByteBuffer fast branch of Tensor.copyTo.
+          ImageUtils.matToFloat32Tensor(paddedImage, buffer: _inputBuffer);
+          await iso.runForMultipleInputs(
+            [_inputBuffer!.buffer],
+            <int, Object>{
+              0: _boxesData!.buffer,
+              1: _scoresData!.buffer,
+            },
+          );
+          boxesView = _boxesData!;
+          scoresView = _scoresData!;
+        } else {
+          // Direct path (no nested isolate): write the BGR→RGB normalized
+          // tensor straight into the input tensor's native memory, then
+          // invoke() and read output tensors as Float32List views, no
+          // runForMultipleInputs, no Tensor.copyTo, no marshalling. The
+          // tensor views are cached at init so there is no per-inference
+          // wrapper allocation here.
+          final views = _views!;
+          ImageUtils.matToFloat32Tensor(paddedImage, buffer: views.inputs[0]);
 
-        interp.invoke();
+          interp.invoke();
 
-        boxesView = views.outputs[0];
-        scoresView = views.outputs[1];
-      }
+          boxesView = views.outputs[0];
+          scoresView = views.outputs[1];
+        }
       });
     }
 

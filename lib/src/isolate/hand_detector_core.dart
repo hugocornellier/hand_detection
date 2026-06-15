@@ -132,7 +132,14 @@ class HandDetectorCore {
 
     final cropDataList = <_HandCropData>[];
     for (final palm in limitedPalms) {
-      final cropped = ImageUtils.rotateAndCropRectangle(image, palm);
+      // Fused crop: warp the rotated palm square straight to the landmark
+      // model input size in a single warpAffine (no native-size intermediate,
+      // no separate resize). _buildResults scales landmarks back accordingly.
+      final cropped = ImageUtils.rotateAndCropRectangle(
+        image,
+        palm,
+        outSize: HandLandmarkModelRunner.inputSize,
+      );
       if (cropped == null) continue;
 
       final (:cx, :cy, :size) =
@@ -205,12 +212,17 @@ class HandDetectorCore {
       final transformedLandmarks = <HandLandmark>[];
       final cropW = data.croppedHand.cols.toDouble();
       final cropH = data.croppedHand.rows.toDouble();
+      // The crop is resampled to the model input size, so landmark pixels are
+      // in crop-input space; scale each back to original-image distance (this
+      // is exactly the inverse of the warpAffine scale folded into the crop).
+      final scaleX = data.cropSize / cropW;
+      final scaleY = data.cropSize / cropH;
       final cosR = math.cos(data.rotation);
       final sinR = math.sin(data.rotation);
 
       for (final lm in lms.landmarks) {
-        final xRel = lm.x - cropW / 2;
-        final yRel = lm.y - cropH / 2;
+        final xRel = (lm.x - cropW / 2) * scaleX;
+        final yRel = (lm.y - cropH / 2) * scaleY;
         final xRot = xRel * cosR - yRel * sinR;
         final yRot = xRel * sinR + yRel * cosR;
         final xOrig = xRot + data.centerX;

@@ -55,7 +55,8 @@ class PalmDetectorWeb {
 
     final String resolved =
         liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
-    _liteRtItp = await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved);
+    _liteRtItp =
+        await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved);
     _activeAccelerator = resolved;
 
     final inT = _liteRtItp!.getInputTensor(0);

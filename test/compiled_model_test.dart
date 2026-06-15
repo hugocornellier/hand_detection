@@ -29,13 +29,15 @@ void main() {
       '$root/assets/models/canned_gesture_classifier.tflite';
   final String imagePath = '$root/example/assets/samples/2-hands.png';
 
-  Uint8List loadBytes(String p) => Uint8List.fromList(File(p).readAsBytesSync());
+  Uint8List loadBytes(String p) =>
+      Uint8List.fromList(File(p).readAsBytesSync());
 
   bool? cmAvail;
   bool compiledAvailable() {
     if (cmAvail != null) return cmAvail!;
     try {
-      final m = CompiledModel.fromBufferWithGpuFallback(loadBytes(palmModelPath));
+      final m =
+          CompiledModel.fromBufferWithGpuFallback(loadBytes(palmModelPath));
       m.close();
       cmAvail = true;
     } catch (_) {

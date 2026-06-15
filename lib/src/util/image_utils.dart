@@ -73,8 +73,9 @@ class ImageUtils {
   /// Returns the cropped and rotated hand image, or null if the crop is invalid.
   static cv.Mat? rotateAndCropRectangle(
     cv.Mat image,
-    PalmDetection palm,
-  ) {
+    PalmDetection palm, {
+    int? outSize,
+  }) {
     final imageWidth = image.cols;
     final imageHeight = image.rows;
 
@@ -82,14 +83,21 @@ class ImageUtils {
         palmCoordinates(palm, imageWidth, imageHeight);
     final size = sizeD.round();
     if (size <= 0) return null;
+    final int outDim = outSize ?? size;
+    if (outDim <= 0) return null;
 
     final angleDegrees = palm.rotation * 180.0 / math.pi;
 
+    // Fold the crop->output scale into the rotation matrix so a single
+    // warpAffine performs rotate + crop + resize straight to the model input
+    // size, avoiding a large native-resolution intermediate Mat and a separate
+    // cv.resize. scale == 1 (outDim == size) preserves the original behaviour.
+    final double scale = outDim / sizeD;
     final rotMat =
-        cv.getRotationMatrix2D(cv.Point2f(cx, cy), angleDegrees, 1.0);
+        cv.getRotationMatrix2D(cv.Point2f(cx, cy), angleDegrees, scale);
 
-    final outCx = size / 2.0;
-    final outCy = size / 2.0;
+    final outCx = outDim / 2.0;
+    final outCy = outDim / 2.0;
 
     final tx = rotMat.at<double>(0, 2) + outCx - cx;
     final ty = rotMat.at<double>(1, 2) + outCy - cy;
@@ -99,7 +107,7 @@ class ImageUtils {
     final output = cv.warpAffine(
       image,
       rotMat,
-      (size, size),
+      (outDim, outDim),
       borderMode: cv.BORDER_CONSTANT,
       borderValue: cv.Scalar.black,
     );
@@ -232,5 +240,148 @@ class ImageUtils {
     fillNHWC4DFromBgrBytes(
         bytes: mat.data, tensor: out, width: width, height: height);
     return out;
+  }
+
+  /// Rebuilds a tightly packed [cv.Mat] from raw [bytes] with a single copy.
+  ///
+  /// `cv.Mat.fromList` walks a lazy `cast<int>` view byte-by-byte, which is
+  /// slow for camera frames. Allocating the Mat first and copying into its
+  /// native buffer keeps reconstruction near memcpy speed. Only use this for
+  /// tightly packed, continuous pixel data.
+  static cv.Mat matFromPackedBytes(
+    int rows,
+    int cols,
+    cv.MatType type,
+    Uint8List bytes,
+  ) {
+    final cv.Mat mat = cv.Mat.create(rows: rows, cols: cols, type: type);
+    final Uint8List dst = mat.data;
+    if (dst.length != bytes.length) {
+      final int expected = dst.length;
+      mat.dispose();
+      throw ArgumentError(
+        'bytes.length ${bytes.length} does not match a '
+        '$rows x $cols Mat of type $type ($expected bytes)',
+      );
+    }
+    dst.setAll(0, bytes);
+    return mat;
+  }
+
+  /// Rebuilds a [cv.Mat] from a backend-neutral packed image [layout].
+  static cv.Mat matFromPackedLayout(
+    PackedImageLayout layout,
+    Uint8List bytes,
+    cv.MatType type,
+  ) {
+    final cv.Mat mat = cv.Mat.create(
+      rows: layout.rows,
+      cols: layout.cols,
+      type: type,
+    );
+    try {
+      layout.copyTo(mat.data, bytes);
+      return mat;
+    } catch (_) {
+      mat.dispose();
+      rethrow;
+    }
+  }
+
+  /// Decodes a [CameraFrame] into a 3-channel BGR [cv.Mat].
+  ///
+  /// The layout and safe operation order come from `flutter_litert`; this
+  /// method only maps that backend-neutral plan onto OpenCV primitives. Shared
+  /// with the face/pose detectors so all three convert camera frames the same
+  /// way.
+  static cv.Mat cameraFrameToBgrMat(CameraFrame frame, {int? maxDim}) {
+    final CameraFrameDecodePlan plan = frame.decodePlan();
+    final cv.Mat source = matFromPackedLayout(
+      plan.sourceLayout,
+      frame.bytes,
+      plan.sourceLayout.channels == 4 ? cv.MatType.CV_8UC4 : cv.MatType.CV_8UC1,
+    );
+
+    cv.Mat maybeResize(cv.Mat m) {
+      if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
+      final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
+      final cv.Mat resized = cv.resize(
+          m,
+          (
+            (m.cols * scale).toInt(),
+            (m.rows * scale).toInt(),
+          ),
+          interpolation: cv.INTER_LINEAR);
+      m.dispose();
+      return resized;
+    }
+
+    int? rotateFlag() {
+      return switch (plan.rotation) {
+        CameraFrameRotation.cw90 => cv.ROTATE_90_CLOCKWISE,
+        CameraFrameRotation.cw180 => cv.ROTATE_180,
+        CameraFrameRotation.cw270 => cv.ROTATE_90_COUNTERCLOCKWISE,
+        null => null,
+      };
+    }
+
+    cv.Mat maybeRotate(cv.Mat m) {
+      final int? flag = rotateFlag();
+      if (flag == null) return m;
+      final cv.Mat rotated = cv.rotate(m, flag);
+      m.dispose();
+      return rotated;
+    }
+
+    final int cvtCode = switch (plan.conversion) {
+      CameraFrameConversion.bgra2bgr => cv.COLOR_BGRA2BGR,
+      CameraFrameConversion.rgba2bgr => cv.COLOR_RGBA2BGR,
+      CameraFrameConversion.yuv2bgrNv12 => cv.COLOR_YUV2BGR_NV12,
+      CameraFrameConversion.yuv2bgrNv21 => cv.COLOR_YUV2BGR_NV21,
+      CameraFrameConversion.yuv2bgrI420 => cv.COLOR_YUV2BGR_I420,
+    };
+
+    switch (plan.order) {
+      case CameraFrameDecodeOrder.resizeRotateThenColorConvert:
+        cv.Mat current = plan.hasStridePadding
+            ? source.region(
+                cv.Rect(0, 0, plan.visibleWidth, plan.visibleHeight),
+              )
+            : source;
+
+        if (maxDim != null &&
+            (current.cols > maxDim || current.rows > maxDim)) {
+          final double scale = maxDim /
+              (current.cols > current.rows ? current.cols : current.rows);
+          final cv.Mat resized = cv.resize(
+              current,
+              (
+                (current.cols * scale).toInt(),
+                (current.rows * scale).toInt(),
+              ),
+              interpolation: cv.INTER_LINEAR);
+          if (!identical(current, source)) current.dispose();
+          current = resized;
+        }
+
+        final int? flag = rotateFlag();
+        if (flag != null) {
+          final cv.Mat rotated = cv.rotate(current, flag);
+          if (!identical(current, source)) current.dispose();
+          current = rotated;
+        }
+
+        final cv.Mat bgr = cv.cvtColor(current, cvtCode);
+        if (!identical(current, source)) current.dispose();
+        source.dispose();
+        return bgr;
+
+      case CameraFrameDecodeOrder.colorConvertThenResizeRotate:
+        cv.Mat current = cv.cvtColor(source, cvtCode);
+        source.dispose();
+        current = maybeResize(current);
+        current = maybeRotate(current);
+        return current;
+    }
   }
 }

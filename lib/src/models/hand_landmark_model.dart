@@ -59,14 +59,17 @@ class HandLandmarkModelRunner {
   /// Input dimensions (224x224 for MediaPipe hand landmark model).
   static const int inputSize = 224;
 
-  /// LiteRT Next [CompiledModel] engine (GPU with CPU fallback), used instead
-  /// of the [InterpreterPool] when initialized via
-  /// [initializeCompiledFromBuffer]. Non-null selects the compiled path, which
-  /// runs serially (one hand at a time) rather than across pool slots.
-  CompiledModel? _compiled;
-
-  /// Scratch input buffer for the CompiledModel path.
-  Float32List? _compiledInput;
+  /// LiteRT Next [CompiledModel] pool (GPU with CPU fallback), used instead of
+  /// the [InterpreterPool] when initialized via [initializeCompiledFromBuffer].
+  /// Once initialized it selects the compiled path.
+  ///
+  /// [detectDirect] fans out one [run] per detected hand via `Future.wait`, so
+  /// concurrent hands land on distinct slots (each with its own model and input
+  /// buffer) and overlap; calls colliding on a slot run back-to-back via the
+  /// slot's lock. At pool size 1 every call serializes through the single slot —
+  /// which is what stops two hands clobbering a shared input buffer mid-
+  /// inference (the second hand's box rendering the first hand's skeleton).
+  final CompiledModelPool _compiledPool = CompiledModelPool();
 
   /// CompiledModel output indices. The MediaPipe hand-landmark model emits, in
   /// order: landmarks (63), score (1), handedness (1), world landmarks (63).
@@ -141,31 +144,21 @@ class HandLandmarkModelRunner {
   /// Interpreter engine).
   Future<void> initializeCompiledFromBuffer(Uint8List modelBytes) async {
     if (_isInitialized) await dispose();
-    final compiled = CompiledModel.fromBufferWithGpuFallback(modelBytes);
-    try {
-      _setupCompiled(compiled);
-    } catch (_) {
-      compiled.close();
-      rethrow;
-    }
-    _compiled = compiled;
-    _compiledInput = Float32List(inputSize * inputSize * 3);
+    _compiledPool.initialize(
+      poolSize: poolSize,
+      inputFloats: inputSize * inputSize * 3,
+      create: () => CompiledModel.fromBufferWithGpuFallback(modelBytes),
+      onFirstModel: _setupCompiled,
+    );
     _isInitialized = true;
   }
 
   void _setupCompiled(CompiledModel compiled) {
-    if (compiled.inputCount != 1) {
+    final int side = compiledSquareInputSide(compiled, label: 'hand landmark');
+    if (side != inputSize) {
       throw UnsupportedError(
-        'Compiled hand landmark expects one input tensor; got '
-        '${compiled.inputCount}.',
-      );
-    }
-    final int inputFloats = compiled.inputByteSizes.single ~/ 4;
-    final int expected = inputSize * inputSize * 3;
-    if (inputFloats != expected) {
-      throw UnsupportedError(
-        'Compiled hand landmark input has $inputFloats floats; expected '
-        '$expected for [1, $inputSize, $inputSize, 3].',
+        'Compiled hand landmark input is ${side}x$side; expected '
+        '${inputSize}x$inputSize.',
       );
     }
     if (compiled.outputCount < 4) {
@@ -174,12 +167,13 @@ class HandLandmarkModelRunner {
         '${compiled.outputCount}.',
       );
     }
-    int floats(int i) => compiled.outputByteSizes[i] ~/ 4;
+    final List<int> outs =
+        compiledOutputFloatCounts(compiled, label: 'hand landmark');
     const int lmFloats = numHandLandmarks * 3;
-    if (floats(_cmLmIdx) != lmFloats ||
-        floats(_cmWorldIdx) != lmFloats ||
-        floats(_cmScoreIdx) != 1 ||
-        floats(_cmHandIdx) != 1) {
+    if (outs[_cmLmIdx] != lmFloats ||
+        outs[_cmWorldIdx] != lmFloats ||
+        outs[_cmScoreIdx] != 1 ||
+        outs[_cmHandIdx] != 1) {
       throw UnsupportedError(
         'Compiled hand landmark output sizes do not match the expected '
         '[landmarks=$lmFloats, score=1, handedness=1, world=$lmFloats] layout.',
@@ -225,9 +219,7 @@ class HandLandmarkModelRunner {
   Future<void> dispose() async {
     await _pool.dispose();
     _buffers.clear();
-    _compiled?.close();
-    _compiled = null;
-    _compiledInput = null;
+    _compiledPool.dispose();
     _isInitialized = false;
   }
 
@@ -248,25 +240,15 @@ class HandLandmarkModelRunner {
           'HandLandmarkModelRunner not initialized. Call initialize() first.');
     }
 
-    if (_compiled != null) {
+    if (_compiledPool.isInitialized) {
       return _runCompiled(roiImage);
     }
 
     return _pool.withInterpreter((interp, iso) async {
       final buf = _buffers[interp]!;
 
-      final (paddedImage, resizedImage) = ImageUtils.keepAspectResizeAndPad(
-        roiImage,
-        inputSize,
-        inputSize,
-      );
-
-      final resizeScaleH = resizedImage.rows / roiImage.rows;
-      final resizeScaleW = resizedImage.cols / roiImage.cols;
-      final padH = paddedImage.rows - resizedImage.rows;
-      final padW = paddedImage.cols - resizedImage.cols;
-      final halfPadH = math.max(0, padH ~/ 2).toDouble();
-      final halfPadW = math.max(0, padW ~/ 2).toDouble();
+      final pre = _prepareInput(roiImage);
+      final cv.Mat work = pre.work;
 
       late Float32List landmarksView;
       late Float32List worldLandmarksView;
@@ -275,7 +257,7 @@ class HandLandmarkModelRunner {
 
       if (iso != null) {
         // IsolateInterpreter path: use scratch buffers and runForMultipleInputs.
-        ImageUtils.matToFloat32Tensor(paddedImage, buffer: buf.inputBuffer);
+        ImageUtils.matToFloat32Tensor(work, buffer: buf.inputBuffer);
         await iso.runForMultipleInputs(
           [buf.inputBuffer.buffer],
           <int, Object>{
@@ -293,7 +275,7 @@ class HandLandmarkModelRunner {
         // Direct path: write straight into the input tensor's native memory,
         // invoke(), then read outputs as Float32List views, no marshalling.
         // Tensor views were cached at init so nothing is allocated here.
-        ImageUtils.matToFloat32Tensor(paddedImage, buffer: buf.views.inputs[0]);
+        ImageUtils.matToFloat32Tensor(work, buffer: buf.views.inputs[0]);
 
         interp.invoke();
 
@@ -303,59 +285,98 @@ class HandLandmarkModelRunner {
         worldLandmarksView = buf.views.outputs[3];
       }
 
-      resizedImage.dispose();
-      paddedImage.dispose();
+      if (pre.ownsWork) work.dispose();
 
       return _parseLandmarks(
         landmarksView,
         worldLandmarksView,
         scoreView,
         handednessView,
-        halfPadW: halfPadW,
-        halfPadH: halfPadH,
-        resizeScaleW: resizeScaleW,
-        resizeScaleH: resizeScaleH,
+        halfPadW: pre.halfPadW,
+        halfPadH: pre.halfPadH,
+        resizeScaleW: pre.resizeScaleW,
+        resizeScaleH: pre.resizeScaleH,
         cropWidth: roiImage.cols,
         cropHeight: roiImage.rows,
       );
     });
   }
 
-  /// CompiledModel (LiteRT Next) variant of [run]. Runs serially (no pool) with
-  /// the same [0,1] RGB preprocessing and landmark parsing as the Interpreter
-  /// path; only the inference dispatch differs.
-  Future<HandLandmarks> _runCompiled(cv.Mat roiImage) async {
+  /// CompiledModel (LiteRT Next) variant of [run]. Runs on the
+  /// [CompiledModelPool] (round-robin across slots) with the same [0,1] RGB
+  /// preprocessing and landmark parsing as the Interpreter path; only the
+  /// inference dispatch differs.
+  Future<HandLandmarks> _runCompiled(cv.Mat roiImage) {
+    // Each pool slot serializes its own calls and owns its input buffer, so
+    // concurrent hands (fanned out by detectDirect) never clobber each other's
+    // input mid-inference. See [CompiledModelPool].
+    return _compiledPool.withModel((model, input) async {
+      final pre = _prepareInput(roiImage);
+      ImageUtils.matToFloat32Tensor(pre.work, buffer: input);
+      final outs = await model.runAsync([input]);
+
+      if (pre.ownsWork) pre.work.dispose();
+
+      return _parseLandmarks(
+        outs[_cmLmIdx],
+        outs[_cmWorldIdx],
+        outs[_cmScoreIdx],
+        outs[_cmHandIdx],
+        halfPadW: pre.halfPadW,
+        halfPadH: pre.halfPadH,
+        resizeScaleW: pre.resizeScaleW,
+        resizeScaleH: pre.resizeScaleH,
+        cropWidth: roiImage.cols,
+        cropHeight: roiImage.rows,
+      );
+    });
+  }
+
+  /// Prepares the model input from [roiImage].
+  ///
+  /// When [roiImage] is already [inputSize]x[inputSize] (the fused-crop hot
+  /// path, matching pose/face's pre-letterboxed contract) it is used directly
+  /// with no resize/pad; otherwise it is letterboxed via
+  /// [ImageUtils.keepAspectResizeAndPad]. The returned [work] Mat must be
+  /// disposed by the caller only when [ownsWork] is true; [roiImage] itself is
+  /// never disposed here.
+  ({
+    cv.Mat work,
+    double resizeScaleW,
+    double resizeScaleH,
+    double halfPadW,
+    double halfPadH,
+    bool ownsWork,
+  }) _prepareInput(cv.Mat roiImage) {
+    if (roiImage.cols == inputSize && roiImage.rows == inputSize) {
+      return (
+        work: roiImage,
+        resizeScaleW: 1.0,
+        resizeScaleH: 1.0,
+        halfPadW: 0.0,
+        halfPadH: 0.0,
+        ownsWork: false,
+      );
+    }
     final (paddedImage, resizedImage) = ImageUtils.keepAspectResizeAndPad(
       roiImage,
       inputSize,
       inputSize,
     );
-
     final resizeScaleH = resizedImage.rows / roiImage.rows;
     final resizeScaleW = resizedImage.cols / roiImage.cols;
     final padH = paddedImage.rows - resizedImage.rows;
     final padW = paddedImage.cols - resizedImage.cols;
     final halfPadH = math.max(0, padH ~/ 2).toDouble();
     final halfPadW = math.max(0, padW ~/ 2).toDouble();
-
-    final input = _compiledInput!;
-    ImageUtils.matToFloat32Tensor(paddedImage, buffer: input);
-    final outs = await _compiled!.runAsync([input]);
-
     resizedImage.dispose();
-    paddedImage.dispose();
-
-    return _parseLandmarks(
-      outs[_cmLmIdx],
-      outs[_cmWorldIdx],
-      outs[_cmScoreIdx],
-      outs[_cmHandIdx],
-      halfPadW: halfPadW,
-      halfPadH: halfPadH,
+    return (
+      work: paddedImage,
       resizeScaleW: resizeScaleW,
       resizeScaleH: resizeScaleH,
-      cropWidth: roiImage.cols,
-      cropHeight: roiImage.rows,
+      halfPadW: halfPadW,
+      halfPadH: halfPadH,
+      ownsWork: true,
     );
   }
 

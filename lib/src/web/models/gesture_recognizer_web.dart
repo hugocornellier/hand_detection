@@ -45,7 +45,8 @@ class GestureRecognizerWeb {
 
     final String resolved =
         liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
-    _embedder = await LiteRtInterpreter.fromBytes(embBytes, accelerator: resolved);
+    _embedder =
+        await LiteRtInterpreter.fromBytes(embBytes, accelerator: resolved);
     _classifier =
         await LiteRtInterpreter.fromBytes(clsBytes, accelerator: resolved);
     _activeAccelerator = resolved;
@@ -116,6 +117,7 @@ class GestureRecognizerWeb {
     if (confidence < minConfidence) {
       return GestureResult(type: GestureType.unknown, confidence: confidence);
     }
-    return GestureResult(type: GestureType.values[maxIdx], confidence: confidence);
+    return GestureResult(
+        type: GestureType.values[maxIdx], confidence: confidence);
   }
 }

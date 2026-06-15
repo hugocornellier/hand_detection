@@ -7,6 +7,7 @@ import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'types.dart';
 import 'isolate/hand_detector_core.dart';
+import 'util/image_utils.dart';
 
 /// Startup payload transferred to the background isolate via [Isolate.spawn].
 class _DetectionIsolateStartupData {
@@ -123,6 +124,7 @@ class HandDetector {
     bool enableGestures = false,
     double gestureMinConfidence = 0.5,
     bool useCompiledModel = false,
+    String liteRtAccelerator = 'auto',
   }) async {
     final detector = HandDetector();
     await detector.initialize(
@@ -136,6 +138,7 @@ class HandDetector {
       enableGestures: enableGestures,
       gestureMinConfidence: gestureMinConfidence,
       useCompiledModel: useCompiledModel,
+      liteRtAccelerator: liteRtAccelerator,
     );
     return detector;
   }
@@ -147,6 +150,12 @@ class HandDetector {
 
   /// Returns true if the detector has been initialized and is ready to use.
   bool get isInitialized => isReady;
+
+  /// Active inference backend label. On native this is always null (the engine
+  /// is selected via [useCompiledModel] / [PerformanceConfig], not a LiteRT.js
+  /// accelerator); the web implementation reports `'webgpu'` / `'wasm'`. Kept
+  /// for cross-platform API parity so the same code compiles on every platform.
+  String? get activeAccelerator => null;
 
   /// Initializes the hand detector by loading TensorFlow Lite models.
   ///
@@ -166,8 +175,9 @@ class HandDetector {
   /// - [gestureMinConfidence]: Minimum confidence for gesture recognition (0.0-1.0). Default: 0.5
   /// - [useCompiledModel]: Use the LiteRT Next [CompiledModel] engine (GPU with
   ///   CPU fallback) instead of the classic Interpreter engine. Default: false.
-  ///   When enabled, the landmark model runs serially rather than across the
-  ///   interpreter pool, so [interpreterPoolSize] has no effect.
+  ///   When enabled, the landmark model runs on a pool of [interpreterPoolSize]
+  ///   CompiledModel instances (default 1) — one model per concurrently-detected
+  ///   hand, each with its own input buffer.
   Future<void> initialize({
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
@@ -179,6 +189,9 @@ class HandDetector {
     bool enableGestures = false,
     double gestureMinConfidence = 0.5,
     bool useCompiledModel = false,
+    // Web-only (LiteRT.js accelerator); accepted for cross-platform API parity
+    // and ignored on native, which selects its engine via useCompiledModel.
+    String liteRtAccelerator = 'auto',
   }) async {
     if (isReady) {
       throw StateError('HandDetector already initialized');
@@ -328,12 +341,17 @@ class HandDetector {
       throw StateError(
           'HandDetector not initialized. Call initialize() first.');
     }
-    final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
-      'detect',
-      {
-        'bytes': TransferableTypedData.fromList([imageBytes]),
-      },
-    );
+    final List<dynamic> result;
+    try {
+      result = await _worker!.sendRequest<List<dynamic>>(
+        'detect',
+        {
+          'bytes': TransferableTypedData.fromList([imageBytes]),
+        },
+      );
+    } catch (e) {
+      rethrowOrFormatException(e, imageBytes);
+    }
     return _deserializeHands(result);
   }
 
@@ -361,11 +379,20 @@ class HandDetector {
       throw StateError(
           'HandDetector not initialized. Call initialize() first.');
     }
-    final int rows = image.rows;
-    final int cols = image.cols;
-    final int type = image.type.value;
-    final Uint8List data = image.data;
-    return detectFromMatBytes(data, width: cols, height: rows, matType: type);
+    // A non-continuous Mat (e.g. a region()/ROI view) yields scrambled bytes
+    // from .data, which reads total*elemSize contiguous bytes and ignores row
+    // stride. Clone to a continuous copy first; detectFromMatBytes copies the
+    // bytes into a TransferableTypedData synchronously, so the clone can be
+    // disposed immediately after.
+    final cv.Mat src = image.isContinuous ? image : image.clone();
+    final result = detectFromMatBytes(
+      src.data,
+      width: src.cols,
+      height: src.rows,
+      matType: src.type.value,
+    );
+    if (!identical(src, image)) src.dispose();
+    return result;
   }
 
   /// Detects hands from raw pixel bytes without constructing a [cv.Mat] first.
@@ -424,15 +451,7 @@ class HandDetector {
     }
     final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
       'detectCameraFrame',
-      {
-        'bytes': TransferableTypedData.fromList([frame.bytes]),
-        'width': frame.width,
-        'height': frame.height,
-        'strideCols': frame.strideCols,
-        'conversion': frame.conversion.index,
-        'rotation': frame.rotation?.index,
-        'maxDim': maxDim,
-      },
+      cameraFrameRpcFields(frame, {'maxDim': maxDim}),
     );
     return _deserializeHands(result);
   }
@@ -497,20 +516,11 @@ class HandDetector {
     _worker = null;
     if (worker == null) return;
 
-    // Graceful shutdown: send 'dispose' as an RPC and await the ack before
-    // letting the worker force-kill the isolate. flutter_litert's
-    // IsolateWorkerBase calls Isolate.kill(priority: immediate) which races
-    // past any queued 'dispose' message, so without this round-trip the
-    // isolate dies before it can free its TFLite interpreters. On Android
-    // each detector leaks ~10-26MB of native memory; under sequential
-    // create/dispose load the low-memory killer reaps the test process.
-    try {
-      await worker.sendRequest<dynamic>('dispose',
-          const <String, dynamic>{}).timeout(const Duration(seconds: 5));
-    } catch (_) {
-      // Best-effort: fall through to the force-kill below.
-    }
-    await worker.dispose();
+    // Graceful shutdown via the shared base: sends 'dispose' as an RPC and
+    // awaits the ack before force-killing the isolate, so it can free its
+    // native TFLite interpreters (~10-26MB/detector on Android) instead of
+    // being reaped mid-cleanup by Isolate.kill(priority: immediate).
+    await worker.disposeGracefully();
   }
 
   List<Hand> _deserializeHands(List<dynamic> result) => result
@@ -574,228 +584,71 @@ class HandDetector {
       return;
     }
 
-    workerReceivePort.listen((message) async {
-      if (message is! Map) return;
-
-      final int? id = message['id'] as int?;
-      final String? op = message['op'] as String?;
-
-      if (id == null || op == null) return;
-
+    Future<Object?> detectMat(cv.Mat mat) async {
+      // core-null check is INSIDE the try so the finally still disposes the Mat
+      // the handler already constructed (avoids a leak on the core-null edge).
       try {
-        switch (op) {
-          case 'detect':
-            if (core == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'HandDetectorCore not initialized in isolate',
-              });
-              return;
-            }
-            final ByteBuffer bb =
-                (message['bytes'] as TransferableTypedData).materialize();
-            final Uint8List imageBytes = bb.asUint8List();
-            final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-            try {
-              final hands = await core!.detectDirect(mat);
-              mainSendPort.send({
-                'id': id,
-                'result': hands.map((h) => h.toMap()).toList(),
-              });
-            } finally {
-              mat.dispose();
-            }
-
-          case 'detectMat':
-            if (core == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'HandDetectorCore not initialized in isolate',
-              });
-              return;
-            }
-            final ByteBuffer bb =
-                (message['bytes'] as TransferableTypedData).materialize();
-            final Uint8List matBytes = bb.asUint8List();
-            final int width = message['width'] as int;
-            final int height = message['height'] as int;
-            final int matTypeValue = message['matType'] as int;
-            final matType = cv.MatType(matTypeValue);
-            final mat = _matFromBytes(height, width, matType, matBytes);
-            try {
-              final hands = await core!.detectDirect(mat);
-              mainSendPort.send({
-                'id': id,
-                'result': hands.map((h) => h.toMap()).toList(),
-              });
-            } finally {
-              mat.dispose();
-            }
-
-          case 'detectCameraFrame':
-            if (core == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'HandDetectorCore not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List frameBytes =
-                (message['bytes'] as TransferableTypedData)
-                    .materialize()
-                    .asUint8List();
-            final frameMat = _matFromCameraFrameMessage(message, frameBytes);
-            try {
-              final hands = await core!.detectDirect(frameMat);
-              mainSendPort.send({
-                'id': id,
-                'result': hands.map((h) => h.toMap()).toList(),
-              });
-            } finally {
-              frameMat.dispose();
-            }
-
-          case 'dispose':
-            await core?.dispose();
-            core = null;
-            // ACK the dispose so the main side can await it before force-
-            // killing the isolate. See HandDetector.dispose().
-            mainSendPort.send({'id': id, 'result': null});
-            workerReceivePort.close();
+        final HandDetectorCore? c = core;
+        if (c == null) {
+          throw StateError('HandDetectorCore not initialized in isolate');
         }
-      } catch (e, st) {
-        mainSendPort.send({'id': id, 'error': '$e\n$st'});
+        final hands = await c.detectDirect(mat);
+        return hands.map((h) => h.toMap()).toList();
+      } finally {
+        mat.dispose();
       }
-    });
-  }
+    }
 
-  /// Reconstructs a [cv.Mat] from raw frame bytes WITHOUT the boxed,
-  /// double-copy `cv.Mat.fromList` path. `Mat.fromList` takes a `List<num>`, so
-  /// it boxes every byte and copies the data twice — ~100x slower for
-  /// full-resolution frames and the dominant per-frame cost in the detection
-  /// isolate. Allocating once with `Mat.create` and bulk-copying into the Mat's
-  /// contiguous native data view (a `Uint8List.setRange`/memmove) is byte
-  /// identical and ~100x faster.
-  static cv.Mat _matFromBytes(
-    int rows,
-    int cols,
-    cv.MatType type,
-    Uint8List bytes,
-  ) {
-    final mat = cv.Mat.create(rows: rows, cols: cols, type: type);
-    mat.data.setRange(0, bytes.length, bytes);
-    return mat;
+    serveIsolateRpc(
+      mainSendPort: mainSendPort,
+      receivePort: workerReceivePort,
+      handlers: {
+        'detect': (message) {
+          final ByteBuffer bb =
+              (message['bytes'] as TransferableTypedData).materialize();
+          final mat = cv.imdecode(bb.asUint8List(), cv.IMREAD_COLOR);
+          if (mat.isEmpty) {
+            mat.dispose();
+            throwDecodeFailure();
+          }
+          return detectMat(mat);
+        },
+        'detectMat': (message) {
+          final ByteBuffer bb =
+              (message['bytes'] as TransferableTypedData).materialize();
+          final matType = cv.MatType(message['matType'] as int);
+          return detectMat(ImageUtils.matFromPackedBytes(
+            message['height'] as int,
+            message['width'] as int,
+            matType,
+            bb.asUint8List(),
+          ));
+        },
+        'detectCameraFrame': (message) {
+          final Uint8List frameBytes =
+              (message['bytes'] as TransferableTypedData)
+                  .materialize()
+                  .asUint8List();
+          return detectMat(_matFromCameraFrameMessage(message, frameBytes));
+        },
+      },
+      onDispose: () async {
+        await core?.dispose();
+        core = null;
+      },
+    );
   }
 
   /// Decodes a [CameraFrame] isolate message into a 3-channel BGR [cv.Mat],
-  /// applying the conversion (YUV→BGR or BGRA/RGBA→BGR, with optional stride
-  /// crop) and any requested rotation. Runs inside the detection isolate.
-  ///
-  /// Op ordering is tuned to keep the big allocations tiny: for BGRA frames we
-  /// resize and rotate on the 4-channel buffer and defer `cvtColor` to the end
-  /// (so it converts the post-resize ~maxDim buffer, not full-res). For YUV we
-  /// must `cvtColor` first because the packed layout isn't resizable, but we
-  /// then resize before rotating so the rotate runs on the small BGR buffer.
-  /// Output is byte-identical to the rotate→resize→cvtColor order because
-  /// `cv.rotate` 90/180/270 is a lossless permutation, `cv.resize`
-  /// (`INTER_LINEAR`) interpolates each channel independently, and the
-  /// BGRA→BGR conversion is a per-pixel alpha drop.
+  /// running all OpenCV work inside the detection isolate. Reconstructs the
+  /// [CameraFrame] from the message and delegates to the shared
+  /// [ImageUtils.cameraFrameToBgrMat] (the same backend-neutral decode plan +
+  /// op ordering the face and pose detectors use).
   static cv.Mat _matFromCameraFrameMessage(Map message, Uint8List bytes) {
-    final int width = message['width'] as int;
-    final int height = message['height'] as int;
-    final int strideCols = message['strideCols'] as int;
-    final conversion =
-        CameraFrameConversion.values[message['conversion'] as int];
-    final int? rotationIndex = message['rotation'] as int?;
-    final int? maxDim = message['maxDim'] as int?;
-
-    int? rotateFlag() {
-      if (rotationIndex == null) return null;
-      return switch (CameraFrameRotation.values[rotationIndex]) {
-        CameraFrameRotation.cw90 => cv.ROTATE_90_CLOCKWISE,
-        CameraFrameRotation.cw180 => cv.ROTATE_180,
-        CameraFrameRotation.cw270 => cv.ROTATE_90_COUNTERCLOCKWISE,
-      };
-    }
-
-    cv.Mat maybeResize(cv.Mat m) {
-      if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
-      final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
-      final resized = cv.resize(
-        m,
-        ((m.cols * scale).toInt(), (m.rows * scale).toInt()),
-        interpolation: cv.INTER_LINEAR,
-      );
-      m.dispose();
-      return resized;
-    }
-
-    cv.Mat maybeRotate(cv.Mat m) {
-      final flag = rotateFlag();
-      if (flag == null) return m;
-      final rotated = cv.rotate(m, flag);
-      m.dispose();
-      return rotated;
-    }
-
-    switch (conversion) {
-      case CameraFrameConversion.bgra2bgr:
-      case CameraFrameConversion.rgba2bgr:
-        final bgraOrRgba =
-            _matFromBytes(height, strideCols, cv.MatType.CV_8UC4, bytes);
-        cv.Mat current = strideCols != width
-            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
-            : bgraOrRgba;
-
-        if (maxDim != null &&
-            (current.cols > maxDim || current.rows > maxDim)) {
-          final double scale = maxDim /
-              (current.cols > current.rows ? current.cols : current.rows);
-          final resized = cv.resize(
-            current,
-            ((current.cols * scale).toInt(), (current.rows * scale).toInt()),
-            interpolation: cv.INTER_LINEAR,
-          );
-          if (!identical(current, bgraOrRgba)) current.dispose();
-          current = resized;
-        }
-
-        final flag = rotateFlag();
-        if (flag != null) {
-          final rotated = cv.rotate(current, flag);
-          if (!identical(current, bgraOrRgba)) current.dispose();
-          current = rotated;
-        }
-
-        final cvtCode = conversion == CameraFrameConversion.bgra2bgr
-            ? cv.COLOR_BGRA2BGR
-            : cv.COLOR_RGBA2BGR;
-        final bgr = cv.cvtColor(current, cvtCode);
-        if (!identical(current, bgraOrRgba)) current.dispose();
-        bgraOrRgba.dispose();
-        return bgr;
-
-      case CameraFrameConversion.yuv2bgrNv12:
-      case CameraFrameConversion.yuv2bgrNv21:
-      case CameraFrameConversion.yuv2bgrI420:
-        final yuvMat = _matFromBytes(
-          height + height ~/ 2,
-          width,
-          cv.MatType.CV_8UC1,
-          bytes,
-        );
-        final cvtCode = switch (conversion) {
-          CameraFrameConversion.yuv2bgrNv12 => cv.COLOR_YUV2BGR_NV12,
-          CameraFrameConversion.yuv2bgrNv21 => cv.COLOR_YUV2BGR_NV21,
-          CameraFrameConversion.yuv2bgrI420 => cv.COLOR_YUV2BGR_I420,
-          _ => cv.COLOR_YUV2BGR_NV12,
-        };
-        cv.Mat current = cv.cvtColor(yuvMat, cvtCode);
-        yuvMat.dispose();
-        current = maybeResize(current);
-        current = maybeRotate(current);
-        return current;
-    }
+    return ImageUtils.cameraFrameToBgrMat(
+      cameraFrameFromRpcMessage(message, bytes),
+      maxDim: message['maxDim'] as int?,
+    );
   }
 }
 
