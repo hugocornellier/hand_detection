@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter_litert/flutter_litert.dart'
-    show BoundingBox, PerformanceConfig;
+    show Accelerator, BoundingBox, PerformanceConfig, Precision;
 import 'package:meta/meta.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import '../types.dart';
@@ -67,6 +67,8 @@ class HandDetectorCore {
     required bool enableGestures,
     required double gestureMinConfidence,
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     _mode = mode;
     _maxDetections = maxDetections;
@@ -74,7 +76,11 @@ class HandDetectorCore {
 
     _palm = PalmDetector(scoreThreshold: detectorConf);
     if (useCompiledModel) {
-      await _palm!.initializeCompiledFromBuffer(palmDetectionBytes);
+      await _palm!.initializeCompiledFromBuffer(
+        palmDetectionBytes,
+        accelerators: accelerators,
+        precision: precision,
+      );
     } else {
       await _palm!.initializeFromBuffer(
         palmDetectionBytes,
@@ -84,7 +90,11 @@ class HandDetectorCore {
 
     _lm = HandLandmarkModelRunner(poolSize: interpreterPoolSize);
     if (useCompiledModel) {
-      await _lm!.initializeCompiledFromBuffer(handLandmarkBytes);
+      await _lm!.initializeCompiledFromBuffer(
+        handLandmarkBytes,
+        accelerators: accelerators,
+        precision: precision,
+      );
     } else {
       await _lm!.initializeFromBuffer(
         handLandmarkBytes,
@@ -101,6 +111,8 @@ class HandDetectorCore {
         await _gestureRecognizer!.initializeCompiledFromBuffers(
           embedderBytes: gestureEmbedderBytes,
           classifierBytes: gestureClassifierBytes,
+          accelerators: accelerators,
+          precision: precision,
         );
       } else {
         await _gestureRecognizer!.initializeFromBuffers(

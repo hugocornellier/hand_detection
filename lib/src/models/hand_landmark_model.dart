@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
 import '../util/image_utils.dart';
@@ -142,12 +143,21 @@ class HandLandmarkModelRunner {
   /// [UnsupportedError] if the model's I/O shapes do not match the expected
   /// 224x224 input / [63,1,1,63] output layout (the caller falls back to the
   /// Interpreter engine).
-  Future<void> initializeCompiledFromBuffer(Uint8List modelBytes) async {
+  Future<void> initializeCompiledFromBuffer(
+    Uint8List modelBytes, {
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
+  }) async {
     if (_isInitialized) await dispose();
     _compiledPool.initialize(
       poolSize: poolSize,
       inputFloats: inputSize * inputSize * 3,
-      create: () => CompiledModel.fromBufferWithGpuFallback(modelBytes),
+      create: () =>
+          setEquals(accelerators, const {Accelerator.gpu, Accelerator.cpu})
+              ? CompiledModel.fromBufferWithGpuFallback(modelBytes,
+                  precision: precision)
+              : CompiledModel.fromBuffer(modelBytes,
+                  accelerators: accelerators, precision: precision),
       onFirstModel: _setupCompiled,
     );
     _isInitialized = true;

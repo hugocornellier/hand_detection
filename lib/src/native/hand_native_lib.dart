@@ -26,6 +26,8 @@ export '../exports/opencv_exports.dart';
 
 export 'package:flutter_litert/flutter_litert.dart'
     show
+        Accelerator,
+        Precision,
         PerformanceMode,
         PerformanceConfig,
         createNHWCTensor4D,

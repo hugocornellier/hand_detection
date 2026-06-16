@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:meta/meta.dart';
 import 'package:flutter_litert/flutter_litert.dart';
@@ -115,9 +116,18 @@ class PalmDetector {
   /// sizes. Throws [UnsupportedError] if the model's I/O shapes are not the
   /// expected square-input / anchor-aligned-output palm layout (the caller
   /// falls back to the Interpreter engine).
-  Future<void> initializeCompiledFromBuffer(Uint8List modelBytes) async {
+  Future<void> initializeCompiledFromBuffer(
+    Uint8List modelBytes, {
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
+  }) async {
     if (_isInitialized) await dispose();
-    final compiled = CompiledModel.fromBufferWithGpuFallback(modelBytes);
+    final compiled =
+        setEquals(accelerators, const {Accelerator.gpu, Accelerator.cpu})
+            ? CompiledModel.fromBufferWithGpuFallback(modelBytes,
+                precision: precision)
+            : CompiledModel.fromBuffer(modelBytes,
+                accelerators: accelerators, precision: precision);
     try {
       _setupCompiled(compiled);
     } catch (_) {

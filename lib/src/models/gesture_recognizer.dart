@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_litert/flutter_litert.dart';
 import '../types.dart';
 
@@ -121,13 +122,21 @@ class GestureRecognizer {
   Future<void> initializeCompiledFromBuffers({
     required Uint8List embedderBytes,
     required Uint8List classifierBytes,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     if (_isInitialized) await dispose();
 
-    final embedder = CompiledModel.fromBufferWithGpuFallback(embedderBytes);
+    CompiledModel buildModel(Uint8List bytes) => setEquals(
+            accelerators, const {Accelerator.gpu, Accelerator.cpu})
+        ? CompiledModel.fromBufferWithGpuFallback(bytes, precision: precision)
+        : CompiledModel.fromBuffer(bytes,
+            accelerators: accelerators, precision: precision);
+
+    final embedder = buildModel(embedderBytes);
     CompiledModel? classifier;
     try {
-      classifier = CompiledModel.fromBufferWithGpuFallback(classifierBytes);
+      classifier = buildModel(classifierBytes);
       _validateCompiled(embedder, classifier);
     } catch (_) {
       embedder.close();

@@ -27,6 +27,8 @@ class _DetectionIsolateStartupData {
   final bool enableGestures;
   final double gestureMinConfidence;
   final bool useCompiledModel;
+  final List<int> acceleratorIndices;
+  final int precisionIndex;
 
   _DetectionIsolateStartupData({
     required this.sendPort,
@@ -45,6 +47,8 @@ class _DetectionIsolateStartupData {
     required this.enableGestures,
     required this.gestureMinConfidence,
     required this.useCompiledModel,
+    required this.acceleratorIndices,
+    required this.precisionIndex,
   });
 }
 
@@ -125,6 +129,8 @@ class HandDetector {
     double gestureMinConfidence = 0.5,
     bool useCompiledModel = false,
     String liteRtAccelerator = 'auto',
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     final detector = HandDetector();
     await detector.initialize(
@@ -139,6 +145,8 @@ class HandDetector {
       gestureMinConfidence: gestureMinConfidence,
       useCompiledModel: useCompiledModel,
       liteRtAccelerator: liteRtAccelerator,
+      accelerators: accelerators,
+      precision: precision,
     );
     return detector;
   }
@@ -192,6 +200,8 @@ class HandDetector {
     // Web-only (LiteRT.js accelerator); accepted for cross-platform API parity
     // and ignored on native, which selects its engine via useCompiledModel.
     String liteRtAccelerator = 'auto',
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     if (isReady) {
       throw StateError('HandDetector already initialized');
@@ -247,6 +257,8 @@ class HandDetector {
       enableGestures: enableGestures,
       gestureMinConfidence: gestureMinConfidence,
       useCompiledModel: useCompiledModel,
+      accelerators: accelerators,
+      precision: precision,
     );
   }
 
@@ -286,6 +298,8 @@ class HandDetector {
     bool enableGestures = false,
     double gestureMinConfidence = 0.5,
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     if (isReady) {
       throw StateError('HandDetector already initialized');
@@ -313,6 +327,8 @@ class HandDetector {
         enableGestures: enableGestures,
         gestureMinConfidence: gestureMinConfidence,
         useCompiledModel: useCompiledModel,
+        accelerators: accelerators,
+        precision: precision,
       );
     } catch (e) {
       if (worker.isReady) {
@@ -556,6 +572,10 @@ class HandDetector {
         (m) => m.name == data.performanceModeName,
       );
 
+      final accelerators =
+          data.acceleratorIndices.map((i) => Accelerator.values[i]).toSet();
+      final precision = Precision.values[data.precisionIndex];
+
       core = HandDetectorCore();
       await core.initializeFromBuffers(
         palmDetectionBytes: palmBytes,
@@ -574,6 +594,8 @@ class HandDetector {
         enableGestures: data.enableGestures,
         gestureMinConfidence: data.gestureMinConfidence,
         useCompiledModel: data.useCompiledModel,
+        accelerators: accelerators,
+        precision: precision,
       );
 
       mainSendPort.send(workerReceivePort.sendPort);
@@ -671,6 +693,8 @@ class _HandDetectorWorker extends IsolateWorkerBase {
     required bool enableGestures,
     required double gestureMinConfidence,
     required bool useCompiledModel,
+    required Set<Accelerator> accelerators,
+    required Precision precision,
   }) async {
     TransferableTypedData? gestureEmbedderData;
     TransferableTypedData? gestureClassifierData;
@@ -705,6 +729,8 @@ class _HandDetectorWorker extends IsolateWorkerBase {
           enableGestures: enableGestures,
           gestureMinConfidence: gestureMinConfidence,
           useCompiledModel: useCompiledModel,
+          acceleratorIndices: accelerators.map((a) => a.index).toList(),
+          precisionIndex: precision.index,
         ),
         debugName: 'HandDetector',
       ),
