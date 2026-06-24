@@ -17,7 +17,7 @@ dependencies:
   hand_detection:
     path: ../
   # Direct dependency so the example can import OneEuroFilter from flutter_litert.
-  flutter_litert: ^3.1.1
+  flutter_litert: ^3.1.4
   flutter_colorpicker: ^1.1.0
   camera: ^0.12.0
   camera_desktop: ^1.2.1
@@ -29,8 +29,14 @@ dependencies:
 # <Flutter/Flutter.h> module, which fails to build on macOS ("module 'Flutter'
 # not found"). Pin to 2.9.4, the last version that builds on macOS, until the
 # upstream package is fixed.
+#
+# Vendored under ../third_party so a macOS-only deprecation warning
+# (AVKeyValueStatus, Swift-import-only) can be suppressed at its declaration. The
+# vendored pubspec keeps version 2.9.4, so this is still an exact 2.9.4 pin. See
+# third_party/video_player_avfoundation/LOCAL_PATCHES.md.
 dependency_overrides:
-  video_player_avfoundation: 2.9.4
+  video_player_avfoundation:
+    path: ../third_party/video_player_avfoundation
 
 dev_dependencies:
   flutter_test:
