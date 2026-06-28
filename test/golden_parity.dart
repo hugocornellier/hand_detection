@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hand_detection/hand_detection.dart';
+import 'package:hand_detection/src/native/hand_native_lib.dart';
 
 /// Manual golden harness (untracked; persists across `git checkout`). Runs the
 /// full e2e detect on the deterministic Interpreter path and dumps every

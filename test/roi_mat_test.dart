@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:hand_detection/hand_detection.dart';
+import 'package:hand_detection/src/native/hand_native_lib.dart';
 
 /// #3 regression: detectFromMat on a non-continuous (ROI) Mat must produce the
 /// same detections as on the equivalent continuous image. Previously the ROI's

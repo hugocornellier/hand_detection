@@ -2,7 +2,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hand_detection/hand_detection.dart';
+import 'package:hand_detection/src/native/hand_native_lib.dart';
 
 /// Web-target compile + smoke test.
 ///

@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:meta/meta.dart';
-import 'package:flutter_litert/flutter_litert.dart';
+import 'package:flutter_litert/native.dart';
 import '../shared/hand_geometry.dart';
 import '../util/image_utils.dart';
 

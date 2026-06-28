@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
-import 'package:hand_detection/hand_detection.dart';
+import 'package:hand_detection/hand_detection_native.dart';
 import 'package:flutter_litert/flutter_litert.dart' show OneEuroFilter;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path_provider/path_provider.dart';

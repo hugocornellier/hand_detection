@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hand_detection/src/models/gesture_recognizer.dart';
-import 'package:hand_detection/hand_detection.dart';
+import 'package:hand_detection/src/native/hand_native_lib.dart';
 import 'package:hand_detection/src/types.dart';
 
 /// Creates 21 dummy landmarks at origin with zero visibility.

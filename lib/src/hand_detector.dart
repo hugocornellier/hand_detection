@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
-import 'package:flutter_litert/flutter_litert.dart';
+import 'package:flutter_litert/native.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'types.dart';
 import 'isolate/hand_detector_core.dart';

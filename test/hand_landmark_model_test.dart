@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:hand_detection/src/models/hand_landmark_model.dart';
-import 'package:hand_detection/hand_detection.dart';
+import 'package:hand_detection/src/native/hand_native_lib.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

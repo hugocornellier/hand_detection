@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show setEquals;
-import 'package:flutter_litert/flutter_litert.dart';
+import 'package:flutter_litert/native.dart';
 import '../types.dart';
 
 /// Gesture recognition using MediaPipe's gesture embedder and classifier models.

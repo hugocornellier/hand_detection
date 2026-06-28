@@ -1,3 +1,10 @@
+## 3.2.0
+
+* Update flutter_litert -> 3.2.0
+* Import native-only flutter_litert APIs via `package:flutter_litert/native.dart` so they resolve under static analysis (flutter_litert 3.2.0 moved `InterpreterPool`, `IsolateWorkerBase`, and `TensorFloat32Views` behind the native conditional export). No runtime or API change.
+* Default the public entry's conditional export to the web implementation, gating native behind `dart.library.io`, restoring WASM compatibility (pub.dev WASM-ready). No behavior change on any platform.
+* Add `package:hand_detection/hand_detection_native.dart`, a native-only entry point that re-exports the native implementation for code that runs only on native platforms.
+
 ## 3.1.2
 
 * Update flutter_litert -> 3.1.1

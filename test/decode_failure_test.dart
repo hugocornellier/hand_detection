@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hand_detection/hand_detection.dart';
+import 'package:hand_detection/src/native/hand_native_lib.dart';
 
 /// Verifies the documented `FormatException` on undecodable bytes (#2 fix —
 /// previously this surfaced an opaque `StateError: Infinity or NaN toInt`).

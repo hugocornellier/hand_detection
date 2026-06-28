@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hand_detection/hand_detection.dart';
+import 'package:hand_detection/src/native/hand_native_lib.dart';
 
 /// End-to-end test of the background-isolate RPC path that now runs on the
 /// shared `serveIsolateRpc` server: spawn the isolate, run a real `detect`

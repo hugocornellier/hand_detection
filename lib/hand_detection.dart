@@ -87,5 +87,5 @@ library;
 //
 // Both aggregators re-export the same shared pure-Dart types, overlay helpers,
 // and flutter_litert utilities, so user code sees one API on every platform.
-export 'src/native/hand_native_lib.dart'
-    if (dart.library.js_interop) 'src/web/hand_web_lib.dart';
+export 'src/web/hand_web_lib.dart'
+    if (dart.library.io) 'src/native/hand_native_lib.dart';
