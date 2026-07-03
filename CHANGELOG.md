@@ -1,3 +1,11 @@
+## 3.3.0
+
+* Add MediaPipe-style detection + tracking: pass `enableTracking: true` to `HandDetector.create` / `initialize` / `initializeFromBuffers`. Each detected hand is followed frame-to-frame via a rotated region of interest derived from its own landmarks (wrist to middle-finger-MCP orientation, tight landmark box expanded 2x), and the palm detector only runs to acquire new hands or re-acquire lost ones. This removes the per-frame palm re-detection drop-outs on video and live camera (a sample origami clip went from 90% to 100% of frames with a hand at the same 0.5 thresholds). Off by default; existing behavior is unchanged.
+* Add `HandDetector.resetTracking()` to clear the cross-frame tracking state between unrelated inputs (a new video, or independent still images). Safe to call when tracking is disabled; no-op on web.
+* Tracking ROIs are gated by `minLandmarkScore` (keep it near 0.5 with tracking; permissive thresholds let garbage frames perpetuate) and guarded against degenerate or runaway regions, so a bad frame falls back to palm re-detection instead of drifting.
+* Web: `enableTracking` is accepted for cross-platform API parity (the web implementation still runs palm detection every frame).
+* Example app: the Live Camera and Video File screens expose a tracking toggle in their settings, off by default.
+
 ## 3.2.0
 
 * Update flutter_litert -> 3.2.0

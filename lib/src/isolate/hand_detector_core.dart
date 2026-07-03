@@ -6,6 +6,7 @@ import 'package:meta/meta.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import '../types.dart';
 import '../util/image_utils.dart';
+import '../shared/hand_geometry.dart' show associateRois, roiFromHandLandmarks;
 import '../models/palm_detector.dart';
 import '../models/hand_landmark_model.dart';
 import '../models/gesture_recognizer.dart';
@@ -48,6 +49,26 @@ class HandDetectorCore {
   HandMode _mode = HandMode.boxesAndLandmarks;
   int _maxDetections = 10;
   double _minLandmarkScore = 0.5;
+  bool _enableTracking = false;
+
+  // MediaPipe-style detection + tracking. When enabled, each kept hand's
+  // landmark-derived rotated ROI is carried to the next frame and landmarked
+  // directly, so a hand persists without the palm detector re-finding it on
+  // every frame (re-detecting a small, deformable palm is what makes the
+  // overlay blink on hard frames). The palm detector then only runs to discover
+  // new hands, or whenever we are tracking fewer than [_maxDetections].
+  List<PalmDetection> _trackedRois = const [];
+  List<PalmDetection> _nextTrackedRois = const [];
+
+  // Landmark-derived ROI tuning, matching MediaPipe's
+  // hand_landmark_landmarks_to_roi.pbtxt (RectTransformationCalculator
+  // scale_x/scale_y 2.0, shift_y -0.1) so the tracked square is expanded and
+  // nudged toward the fingertips exactly as MediaPipe does. [_trackAssocIou] is
+  // the AssociationNormRectCalculator min_similarity_threshold (0.5) above
+  // which a fresh palm-derived ROI is treated as an already-tracked hand.
+  static const double _trackRoiScale = 2.0;
+  static const double _trackRoiShift = -0.1;
+  static const double _trackAssocIou = 0.5;
 
   /// Returns true when the core has been initialized with model data.
   bool get isReady => _palm != null;
@@ -62,6 +83,7 @@ class HandDetectorCore {
     required int maxDetections,
     required double minLandmarkScore,
     required double detectorConf,
+    bool enableTracking = false,
     required int interpreterPoolSize,
     required PerformanceConfig performanceConfig,
     required bool enableGestures,
@@ -73,6 +95,8 @@ class HandDetectorCore {
     _mode = mode;
     _maxDetections = maxDetections;
     _minLandmarkScore = minLandmarkScore;
+    _enableTracking = enableTracking;
+    resetTracking();
 
     _palm = PalmDetector(scoreThreshold: detectorConf);
     if (useCompiledModel) {
@@ -132,35 +156,67 @@ class HandDetectorCore {
       );
     }
 
-    final List<PalmDetection> palms = await _palm!.detectOnMat(image);
+    final int imgW = image.cols;
+    final int imgH = image.rows;
 
-    final limitedPalms = palms.length > _maxDetections
-        ? palms.sublist(0, _maxDetections)
+    // MediaPipe detection + tracking: reuse each tracked hand's ROI from the
+    // previous frame, and only run the palm detector to discover new hands (or
+    // whenever we are tracking fewer than [_maxDetections]). With tracking off
+    // this reduces to running the palm detector every frame (original
+    // behaviour).
+    final List<PalmDetection> tracked =
+        _enableTracking ? _trackedRois : const [];
+    // MediaPipe gating (NormalizedRectVectorHasMinSizeCalculator): only run the
+    // palm detector while we are tracking fewer than [_maxDetections] hands.
+    final bool runPalm = !_enableTracking || tracked.length < _maxDetections;
+    final List<PalmDetection> palms =
+        runPalm ? await _palm!.detectOnMat(image) : const [];
+
+    // MediaPipe AssociationNormRectCalculator: merge fresh palm-derived ROIs
+    // (low priority) with the previous frame's landmark ROIs (high priority),
+    // dropping either-side overlaps above [_trackAssocIou] so a re-detected
+    // hand keeps its stable tracked ROI and duplicates are removed within each
+    // list too. With tracking off this reduces to the per-frame palm list.
+    List<PalmDetection> rois = _enableTracking
+        ? associateRois(palms, tracked,
+            imageWidth: imgW,
+            imageHeight: imgH,
+            minSimilarityThreshold: _trackAssocIou)
         : palms;
+    if (rois.length > _maxDetections) {
+      // MediaPipe caps palm detections (ClipDetectionVectorSizeCalculator) and
+      // leans on gating to bound the total; we cap defensively here. With
+      // tracking on, associateRois appends the (gating-bounded) tracked ROIs
+      // last, so keep the tail and a held hand never blinks out in favour of a
+      // fresh palm. With tracking off, palms arrive in detector (score) order,
+      // so keep the leading slots as the pre-tracking pipeline did.
+      rois = _enableTracking
+          ? rois.sublist(rois.length - _maxDetections)
+          : rois.sublist(0, _maxDetections);
+    }
 
     if (_mode == HandMode.boxes) {
-      return _palmsToHands(image, limitedPalms);
+      return _palmsToHands(image, rois);
     }
 
     final cropDataList = <_HandCropData>[];
-    for (final palm in limitedPalms) {
-      // Fused crop: warp the rotated palm square straight to the landmark
-      // model input size in a single warpAffine (no native-size intermediate,
-      // no separate resize). _buildResults scales landmarks back accordingly.
+    for (final roi in rois) {
+      // Fused crop: warp the rotated square straight to the landmark model
+      // input size in a single warpAffine (no native-size intermediate, no
+      // separate resize). _buildResults scales landmarks back accordingly.
       final cropped = ImageUtils.rotateAndCropRectangle(
         image,
-        palm,
+        roi,
         outSize: HandLandmarkModelRunner.inputSize,
       );
       if (cropped == null) continue;
 
-      final (:cx, :cy, :size) =
-          ImageUtils.palmCoordinates(palm, image.cols, image.rows);
+      final (:cx, :cy, :size) = ImageUtils.palmCoordinates(roi, imgW, imgH);
 
       cropDataList.add(_HandCropData(
-        palm: palm,
+        palm: roi,
         croppedHand: cropped,
-        rotation: palm.rotation,
+        rotation: roi.rotation,
         centerX: cx,
         centerY: cy,
         cropSize: size,
@@ -176,7 +232,14 @@ class HandDetectorCore {
     }).toList();
 
     final allLandmarks = await Future.wait(futures);
+
+    // _buildResults keeps hands whose landmark score clears the threshold and,
+    // when tracking is on, records each kept hand's landmark-derived ROI for the
+    // next frame. Hands that fall below the threshold are simply not carried
+    // forward, so tracking drops them and the palm detector re-acquires later.
+    _nextTrackedRois = _enableTracking ? <PalmDetection>[] : const [];
     final results = await _buildResults(image, cropDataList, allLandmarks);
+    if (_enableTracking) _trackedRois = _nextTrackedRois;
 
     for (final data in cropDataList) {
       data.dispose();
@@ -275,6 +338,12 @@ class HandDetectorCore {
         rotatedSize: data.cropSize,
         gesture: gesture,
       ));
+
+      if (_enableTracking) {
+        final nextRoi = _rectFromLandmarks(
+            transformedLandmarks, image.cols, image.rows, lms.score);
+        if (nextRoi != null) _nextTrackedRois.add(nextRoi);
+      }
     }
 
     return results;
@@ -287,6 +356,27 @@ class HandDetectorCore {
       (centerY - halfSize).clamp(0, imgH.toDouble()),
       (centerX + halfSize).clamp(0, imgW.toDouble()),
       (centerY + halfSize).clamp(0, imgH.toDouble()),
+    );
+  }
+
+  /// Clears cross-frame tracking state. Call between unrelated inputs (a new
+  /// video, or independent still images) so a stale ROI is not reused.
+  void resetTracking() {
+    _trackedRois = const [];
+  }
+
+  /// Builds the next-frame rotated ROI for a hand from its landmarks via the
+  /// shared [roiFromHandLandmarks] (MediaPipe's landmarks-to-rect step).
+  PalmDetection? _rectFromLandmarks(
+      List<HandLandmark> lms, int imgW, int imgH, double score) {
+    return roiFromHandLandmarks(
+      xs: [for (final l in lms) l.x],
+      ys: [for (final l in lms) l.y],
+      imageWidth: imgW,
+      imageHeight: imgH,
+      score: score,
+      scale: _trackRoiScale,
+      shiftY: _trackRoiShift,
     );
   }
 

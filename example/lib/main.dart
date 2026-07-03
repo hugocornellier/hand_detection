@@ -1247,6 +1247,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   int _maxHands = 2;
   bool _enableGestures = true;
+  bool _enableTracking = false;
 
   // Live backend benchmarking: default to CompiledModel, with a one-tap
   // XNNPACK fallback for immediate A/B checks in the camera view.
@@ -1287,6 +1288,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       detectorConf: 0.6,
       maxDetections: _maxHands,
       minLandmarkScore: 0.5,
+      enableTracking: _enableTracking,
       performanceConfig: const PerformanceConfig.xnnpack(),
       enableGestures: _enableGestures,
       gestureMinConfidence: 0.5,
@@ -1513,6 +1515,27 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                   onChanged: (value) {
                     setMenuState(() => _enableGestures = value);
                     _updateDetectorSettings(() => _enableGestures = value);
+                  },
+                ),
+              ],
+            ),
+            const Divider(color: Colors.white24, height: 24),
+            const Text('TRACKING', style: sectionLabelStyle),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Detection + tracking (MediaPipe)',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ),
+                Switch(
+                  value: _enableTracking,
+                  activeTrackColor: Colors.blue,
+                  onChanged: (value) {
+                    setMenuState(() => _enableTracking = value);
+                    _updateDetectorSettings(() => _enableTracking = value);
                   },
                 ),
               ],
@@ -1857,6 +1880,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
   bool _isProcessing = false;
   bool _cancelRequested = false;
   bool _useCompiledModel = true;
+  bool _enableTracking = false;
   String? _errorMessage;
   String? _statusMessage;
 
@@ -1913,6 +1937,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
       detectorConf: 0.6,
       maxDetections: 10,
       minLandmarkScore: 0.5,
+      enableTracking: _enableTracking,
       performanceConfig: const PerformanceConfig.xnnpack(),
       enableGestures: _enableGestures,
       gestureMinConfidence: 0.5,
@@ -2096,6 +2121,8 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
 
     cv.Mat? frame;
     _smoother.reset();
+    // New video: drop any tracked ROI carried over from a previous run.
+    await detector.resetTracking();
     try {
       int idx = 0;
       while (mounted && !_cancelRequested) {
@@ -2528,6 +2555,22 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                   _smoother.enabled = v;
                   _smoother.reset();
                 });
+              },
+            ),
+          if (!_isProcessing)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Detection + tracking (MediaPipe)'),
+              subtitle: Text(
+                _enableTracking
+                    ? 'On: hands followed frame-to-frame via landmark ROI'
+                    : 'Off: palm detector re-runs on every frame',
+              ),
+              value: _enableTracking,
+              onChanged: (v) {
+                setState(() => _enableTracking = v);
+                _reinitDetector();
               },
             ),
           if (!_isProcessing && _inputPath != null) ...[

@@ -21,6 +21,7 @@ class _DetectionIsolateStartupData {
   final double detectorConf;
   final int maxDetections;
   final double minLandmarkScore;
+  final bool enableTracking;
   final int interpreterPoolSize;
   final String performanceModeName;
   final int? numThreads;
@@ -41,6 +42,7 @@ class _DetectionIsolateStartupData {
     required this.detectorConf,
     required this.maxDetections,
     required this.minLandmarkScore,
+    required this.enableTracking,
     required this.interpreterPoolSize,
     required this.performanceModeName,
     required this.numThreads,
@@ -123,6 +125,7 @@ class HandDetector {
     double detectorConf = 0.45,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
+    bool enableTracking = false,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -139,6 +142,7 @@ class HandDetector {
       detectorConf: detectorConf,
       maxDetections: maxDetections,
       minLandmarkScore: minLandmarkScore,
+      enableTracking: enableTracking,
       interpreterPoolSize: interpreterPoolSize,
       performanceConfig: performanceConfig,
       enableGestures: enableGestures,
@@ -186,12 +190,18 @@ class HandDetector {
   ///   When enabled, the landmark model runs on a pool of [interpreterPoolSize]
   ///   CompiledModel instances (default 1) — one model per concurrently-detected
   ///   hand, each with its own input buffer.
+  /// - [enableTracking]: Enable MediaPipe-style detection + tracking. When true,
+  ///   each detected hand is followed frame-to-frame via a landmark-derived
+  ///   region of interest, and the palm detector only runs to find new hands.
+  ///   This greatly reduces overlay drop-outs on video. Call [resetTracking]
+  ///   between unrelated inputs. Default: false (palm detection every frame).
   Future<void> initialize({
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
     double detectorConf = 0.45,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
+    bool enableTracking = false,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -252,6 +262,7 @@ class HandDetector {
       detectorConf: detectorConf,
       maxDetections: maxDetections,
       minLandmarkScore: minLandmarkScore,
+      enableTracking: enableTracking,
       interpreterPoolSize: effectivePoolSize,
       performanceConfig: performanceConfig,
       enableGestures: enableGestures,
@@ -293,6 +304,7 @@ class HandDetector {
     double detectorConf = 0.45,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
+    bool enableTracking = false,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -322,6 +334,7 @@ class HandDetector {
         detectorConf: detectorConf,
         maxDetections: maxDetections,
         minLandmarkScore: minLandmarkScore,
+        enableTracking: enableTracking,
         interpreterPoolSize: effectivePoolSize,
         performanceConfig: performanceConfig,
         enableGestures: enableGestures,
@@ -369,6 +382,20 @@ class HandDetector {
       rethrowOrFormatException(e, imageBytes);
     }
     return _deserializeHands(result);
+  }
+
+  /// Clears the MediaPipe-style cross-frame tracking state (see [initialize]'s
+  /// `enableTracking`).
+  ///
+  /// Call this between unrelated inputs, for example before processing a new
+  /// video or when switching to independent still images, so a stale region of
+  /// interest from a previous frame is not reused. Safe to call when tracking
+  /// was never enabled.
+  Future<void> resetTracking() async {
+    final worker = _worker;
+    if (worker == null) return;
+    await worker
+        .sendRequest<Object?>('resetTracking', const <String, dynamic>{});
   }
 
   /// Detects hands in an image file at [path].
@@ -586,6 +613,7 @@ class HandDetector {
         maxDetections: data.maxDetections,
         minLandmarkScore: data.minLandmarkScore,
         detectorConf: data.detectorConf,
+        enableTracking: data.enableTracking,
         interpreterPoolSize: data.interpreterPoolSize,
         performanceConfig: PerformanceConfig(
           mode: performanceMode,
@@ -653,6 +681,10 @@ class HandDetector {
                   .asUint8List();
           return detectMat(_matFromCameraFrameMessage(message, frameBytes));
         },
+        'resetTracking': (message) {
+          core?.resetTracking();
+          return Future<Object?>.value(true);
+        },
       },
       onDispose: () async {
         await core?.dispose();
@@ -688,6 +720,7 @@ class _HandDetectorWorker extends IsolateWorkerBase {
     required double detectorConf,
     required int maxDetections,
     required double minLandmarkScore,
+    required bool enableTracking,
     required int interpreterPoolSize,
     required PerformanceConfig performanceConfig,
     required bool enableGestures,
@@ -723,6 +756,7 @@ class _HandDetectorWorker extends IsolateWorkerBase {
           detectorConf: detectorConf,
           maxDetections: maxDetections,
           minLandmarkScore: minLandmarkScore,
+          enableTracking: enableTracking,
           interpreterPoolSize: interpreterPoolSize,
           performanceModeName: performanceConfig.mode.name,
           numThreads: performanceConfig.numThreads,

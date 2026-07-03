@@ -13,10 +13,10 @@
 
 Flutter implementation of Google's MediaPipe hand detection and landmark models using TensorFlow Lite.
 Completely local: no remote API, just pure on-device, offline detection.
-
-### Hand Detection with 21-Point Landmarks 
  
-![Hand detection example](assets/screenshots/example.png)
+<p align="center">
+  <img src="assets/screenshots/hand-detection-demo.webp" alt="Hand detection example" width="640">
+</p>
 
 ## Features
 

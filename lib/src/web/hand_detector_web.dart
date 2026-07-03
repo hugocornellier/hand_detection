@@ -36,6 +36,7 @@ class HandDetector with WebGpuFallback {
     double detectorConf = 0.45,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
+    bool enableTracking = false,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -50,6 +51,7 @@ class HandDetector with WebGpuFallback {
       detectorConf: detectorConf,
       maxDetections: maxDetections,
       minLandmarkScore: minLandmarkScore,
+      enableTracking: enableTracking,
       enableGestures: enableGestures,
       gestureMinConfidence: gestureMinConfidence,
       liteRtAccelerator: liteRtAccelerator,
@@ -87,6 +89,9 @@ class HandDetector with WebGpuFallback {
     double detectorConf = 0.45,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
+    // Accepted for cross-platform API parity; the web implementation runs palm
+    // detection every frame and does not implement ROI tracking yet.
+    bool enableTracking = false,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -115,6 +120,10 @@ class HandDetector with WebGpuFallback {
       await _gesture!.initialize(liteRtAccelerator: liteRtAccelerator);
     }
   }
+
+  /// No-op on web (accepted for cross-platform API parity with the native
+  /// implementation's MediaPipe-style tracking; see `enableTracking`).
+  Future<void> resetTracking() async {}
 
   @override
   Future<void> swapToWasm() async {

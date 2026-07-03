@@ -147,7 +147,12 @@ List<PalmDetection> postprocessPalms(
     if (boxSize > 0) {
       final kp02X = kp2X - kp0X;
       final kp02Y = kp2Y - kp0Y;
-      final sqnRrSize = 2.9 * boxSize;
+      // MediaPipe palm_detection_detection_to_roi RectTransformationCalculator:
+      // scale_x/scale_y 2.6 on the square_long palm box, with shift_y -0.5
+      // (the center shift below). The Python reference port this file was
+      // adapted from used 2.9; 2.6 is the value MediaPipe's shipped
+      // hand_landmark_full model was trained against.
+      final sqnRrSize = 2.6 * boxSize;
       var rotation = 0.5 * math.pi - math.atan2(-kp02Y, kp02X);
       rotation = normalizeRadians(rotation);
       var sqnRrCenterX = boxX + 0.5 * boxSize * math.sin(rotation);
@@ -174,6 +179,170 @@ List<PalmDetection> postprocessPalms(
   }
 
   return _nmsPalms(palms, imageWidth, imageHeight, iouThreshold);
+}
+
+/// Landmark subset used by MediaPipe's HandLandmarksToRectCalculator: wrist,
+/// the three thumb base joints, and the MCP + PIP joints of the four fingers.
+/// Fingertips and DIP joints are deliberately excluded so the ROI follows the
+/// stable knuckle region rather than fast-moving fingertips.
+const List<int> _roiLandmarkIndices = [0, 1, 2, 3, 5, 6, 9, 10, 13, 14, 17, 18];
+
+/// Builds the next-frame tracking ROI for a hand from its 21 landmarks,
+/// porting MediaPipe's landmarks-to-ROI step of the hand tracking graph
+/// (HandLandmarksToRectCalculator followed by RectTransformationCalculator
+/// with scale 2.0, shift_y -0.1, square_long):
+///
+/// 1. Orient by the axis from the wrist to the weighted mean of the index,
+///    middle and ring MCP knuckles (middle counted twice), so that axis points
+///    "up".
+/// 2. Take the tight bounding box of the knuckle-region landmark subset
+///    (fingertips and DIPs excluded) in that rotated frame.
+/// 3. Shift the box by [shiftY] of its own unscaled height along the hand
+///    axis, make it square on its long side, and expand it by [scale] for
+///    inter-frame motion margin.
+/// 4. Re-normalise into [PalmDetection] space so the standard crop path can
+///    consume it on the next frame.
+///
+/// [xs]/[ys] are the landmark pixel coordinates in original image space, in
+/// the standard 21-landmark order. [shiftY] follows MediaPipe's sign
+/// convention: negative shifts toward the fingertips. Returns null when the
+/// landmarks cannot produce a usable ROI: fewer than 21 points, a degenerate
+/// box, or a size outside [minSqnSize]..[maxSqnSize] (normalised by the
+/// longest image side), so the caller drops tracking and the palm detector
+/// re-acquires instead of perpetuating a bad region.
+PalmDetection? roiFromHandLandmarks({
+  required List<double> xs,
+  required List<double> ys,
+  required int imageWidth,
+  required int imageHeight,
+  required double score,
+  double scale = 2.0,
+  double shiftY = -0.1,
+  double minSqnSize = 0.03,
+  double maxSqnSize = 1.2,
+}) {
+  if (xs.length < 21 || ys.length < 21) return null;
+
+  // Rotation axis: wrist -> ((indexMCP + ringMCP) / 2 + middleMCP) / 2,
+  // oriented so it points "up" (MediaPipe's kTargetAngle of pi/2).
+  final x1 = ((xs[5] + xs[13]) / 2 + xs[9]) / 2;
+  final y1 = ((ys[5] + ys[13]) / 2 + ys[9]) / 2;
+  final rotation =
+      normalizeRadians(0.5 * math.pi - math.atan2(-(y1 - ys[0]), x1 - xs[0]));
+  final cosR = math.cos(rotation);
+  final sinR = math.sin(rotation);
+
+  // Axis-aligned bounds of the knuckle-subset landmarks.
+  double aaMinX = double.infinity, aaMinY = double.infinity;
+  double aaMaxX = -double.infinity, aaMaxY = -double.infinity;
+  for (final i in _roiLandmarkIndices) {
+    if (xs[i] < aaMinX) aaMinX = xs[i];
+    if (xs[i] > aaMaxX) aaMaxX = xs[i];
+    if (ys[i] < aaMinY) aaMinY = ys[i];
+    if (ys[i] > aaMaxY) aaMaxY = ys[i];
+  }
+  final aaCx = (aaMinX + aaMaxX) / 2;
+  final aaCy = (aaMinY + aaMaxY) / 2;
+
+  // Bounds of the same landmarks in the hand-aligned frame: rotate each
+  // delta from the axis-aligned center by R(-rotation).
+  double minX = double.infinity, minY = double.infinity;
+  double maxX = -double.infinity, maxY = -double.infinity;
+  for (final i in _roiLandmarkIndices) {
+    final dx = xs[i] - aaCx;
+    final dy = ys[i] - aaCy;
+    final rx = dx * cosR + dy * sinR;
+    final ry = -dx * sinR + dy * cosR;
+    if (rx < minX) minX = rx;
+    if (rx > maxX) maxX = rx;
+    if (ry < minY) minY = ry;
+    if (ry > maxY) maxY = ry;
+  }
+  final width = maxX - minX;
+  final height = maxY - minY;
+
+  // Map the rotated-frame box center back to image space:
+  // R(+rotation) * projectedCenter + axisAlignedCenter.
+  final projCx = (minX + maxX) / 2;
+  final projCy = (minY + maxY) / 2;
+  var cx = projCx * cosR - projCy * sinR + aaCx;
+  var cy = projCx * sinR + projCy * cosR + aaCy;
+
+  // RectTransformationCalculator: shift by the unscaled height along the
+  // rect's own axes (shift_x is 0), then square the long side and scale.
+  cx += -height * shiftY * sinR;
+  cy += height * shiftY * cosR;
+  final size = math.max(width, height) * scale;
+  if (size <= 0) return null;
+
+  final maxDim = math.max(imageWidth, imageHeight);
+  final sqnSize = size / maxDim;
+  if (sqnSize < minSqnSize || sqnSize > maxSqnSize) return null;
+
+  return PalmDetection(
+    sqnRrSize: sqnSize,
+    rotation: rotation,
+    sqnRrCenterX: cx / imageWidth,
+    sqnRrCenterY: cy / imageHeight,
+    score: score,
+  );
+}
+
+/// Axis-aligned IoU of two ROIs in pixel space, ignoring rotation, mirroring
+/// MediaPipe's AssociationNormRectCalculator (whose rect conversion also drops
+/// rotation). [PalmDetection] ROIs are squares in pixel space, and IoU of
+/// axis-aligned boxes is invariant under the per-axis normalisation MediaPipe
+/// applies, so this equals MediaPipe's normalised-space overlap similarity.
+double roiIou(
+    PalmDetection a, PalmDetection b, int imageWidth, int imageHeight) {
+  final maxDim = math.max(imageWidth, imageHeight).toDouble();
+  final aHalf = a.sqnRrSize * maxDim / 2;
+  final bHalf = b.sqnRrSize * maxDim / 2;
+  final aCx = a.sqnRrCenterX * imageWidth;
+  final aCy = a.sqnRrCenterY * imageHeight;
+  final bCx = b.sqnRrCenterX * imageWidth;
+  final bCy = b.sqnRrCenterY * imageHeight;
+  final iw =
+      math.min(aCx + aHalf, bCx + bHalf) - math.max(aCx - aHalf, bCx - bHalf);
+  final ih =
+      math.min(aCy + aHalf, bCy + bHalf) - math.max(aCy - aHalf, bCy - bHalf);
+  if (iw <= 0 || ih <= 0) return 0;
+  final inter = iw * ih;
+  final union = 4 * aHalf * aHalf + 4 * bHalf * bHalf - inter;
+  return union <= 0 ? 0 : inter / union;
+}
+
+/// Merges fresh palm-detection ROIs with ROIs tracked from the previous
+/// frame's landmarks, porting MediaPipe's AssociationNormRectCalculator
+/// (hand tracking graph, min_similarity_threshold 0.5).
+///
+/// Elements are added in order, [lowPriority] (fresh palm detections) first
+/// and [highPriority] (tracked ROIs) after; each new element removes every
+/// already-kept element whose [roiIou] exceeds [minSimilarityThreshold].
+/// Later entries therefore win, so an overlapping palm/tracked pair keeps the
+/// tracked ROI, and entries within the same list are also deduplicated
+/// against each other (tracked-vs-tracked included).
+List<PalmDetection> associateRois(
+  List<PalmDetection> lowPriority,
+  List<PalmDetection> highPriority, {
+  required int imageWidth,
+  required int imageHeight,
+  double minSimilarityThreshold = 0.5,
+}) {
+  final kept = <PalmDetection>[];
+  void add(PalmDetection roi) {
+    kept.removeWhere((o) =>
+        roiIou(o, roi, imageWidth, imageHeight) > minSimilarityThreshold);
+    kept.add(roi);
+  }
+
+  for (final roi in lowPriority) {
+    add(roi);
+  }
+  for (final roi in highPriority) {
+    add(roi);
+  }
+  return kept;
 }
 
 /// Weighted Non-Maximum Suppression for palm detections.
