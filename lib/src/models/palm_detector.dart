@@ -46,6 +46,14 @@ class PalmDetector {
   /// Score threshold for detection filtering.
   final double scoreThreshold;
 
+  /// IoU threshold for the weighted non-maximum suppression that fuses
+  /// overlapping palm boxes. Higher keeps more nearby detections.
+  final double nmsIouThreshold;
+
+  /// Expansion factor applied to each palm box when building its rotated
+  /// square ROI for the landmark model (MediaPipe's detection-to-ROI scale).
+  final double roiScale;
+
   /// Pre-allocated input buffer.
   Float32List? _inputBuffer;
 
@@ -76,8 +84,13 @@ class PalmDetector {
   int _cmBoxesIdx = 0;
   int _cmScoresIdx = 1;
 
-  /// Creates a palm detector with the specified score threshold.
-  PalmDetector({this.scoreThreshold = 0.45});
+  /// Creates a palm detector with the specified score threshold, NMS IoU
+  /// threshold, and ROI expansion scale.
+  PalmDetector({
+    this.scoreThreshold = 0.45,
+    this.nmsIouThreshold = 0.45,
+    this.roiScale = 2.6,
+  });
 
   /// Initializes the palm detector by loading the TFLite model.
   Future<void> initialize({PerformanceConfig? performanceConfig}) async {
@@ -327,6 +340,8 @@ class PalmDetector {
       imageHeight: _imageHeight,
       squareStandardSize: _squareStandardSize,
       squarePaddingHalfSize: _squarePaddingHalfSize,
+      roiScale: roiScale,
+      iouThreshold: nmsIouThreshold,
     );
   }
 

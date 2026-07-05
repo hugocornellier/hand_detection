@@ -25,6 +25,12 @@ class PalmDetectorWeb {
   /// Detection confidence threshold.
   final double scoreThreshold;
 
+  /// IoU threshold for the palm non-maximum suppression.
+  final double nmsIouThreshold;
+
+  /// Expansion factor for the palm ROI fed to the landmark model.
+  final double roiScale;
+
   late int _inH;
   late int _inW;
   late List<List<double>> _anchors;
@@ -39,7 +45,11 @@ class PalmDetectorWeb {
   web.CanvasRenderingContext2D? _ctx;
   bool _initialized = false;
 
-  PalmDetectorWeb({this.scoreThreshold = 0.45});
+  PalmDetectorWeb({
+    this.scoreThreshold = 0.45,
+    this.nmsIouThreshold = 0.45,
+    this.roiScale = 2.6,
+  });
 
   bool get isInitialized => _initialized;
   String? get activeAccelerator =>
@@ -185,6 +195,8 @@ class PalmDetectorWeb {
       imageHeight: imageHeight,
       squareStandardSize: squareStandardSize,
       squarePaddingHalfSize: squarePaddingHalfSize,
+      roiScale: roiScale,
+      iouThreshold: nmsIouThreshold,
     );
   }
 }

@@ -278,7 +278,18 @@ if (hand.handedness == Handedness.left) {
 
 Enable gesture recognition to classify hand poses into 7 gestures:
 
-![Gesture detection example](assets/screenshots/gesture-detect.png)
+<!--
+  Size these with width= (NOT height=). pub.dev's README stylesheet forces
+  img{height:auto}, discarding height=, so height-sized side-by-side images
+  render at natural width and stack. Percentage width= is honored by both
+  pub.dev and GitHub; 24% + 61% is the pair's aspect-matched ratio and fits
+  pub.dev's ~620px README column.
+-->
+<p align="center">
+  <img src="assets/screenshots/gesture-thumbs-up.webp" alt="Thumbs-up gesture detection" width="24%">
+  &nbsp;
+  <img src="assets/screenshots/gesture-victory.webp" alt="Closed-fist and victory gesture detection" width="61%">
+</p>
 
 | Gesture | Description |
 |---------|-------------|
@@ -335,21 +346,58 @@ final detector = HandDetector(
 
 ## Configuration Options
 
-The `HandDetector` constructor accepts several configuration options:
+`HandDetector.create` (and the equivalent `initialize`) accept several configuration options:
 
 ```dart
-final detector = HandDetector(
-  mode: HandMode.boxesAndLandmarks,      // Detection mode
-  landmarkModel: HandLandmarkModel.full, // Landmark model variant
+final detector = await HandDetector.create(
+  mode: HandMode.boxesAndLandmarks,       // Detection mode
+  landmarkModel: HandLandmarkModel.full,  // Landmark model variant
   detectorConf: 0.45,                     // Palm detection confidence (0.0-1.0)
-  maxDetections: 10,                     // Maximum hands to detect
-  minLandmarkScore: 0.5,                 // Minimum landmark confidence (0.0-1.0)
-  interpreterPoolSize: 1,                // TFLite interpreter pool size
-  performanceConfig: const PerformanceConfig(),    // Performance config (default: auto)
-  enableGestures: false,                 // Enable gesture recognition
-  gestureMinConfidence: 0.5,             // Minimum gesture confidence (0.0-1.0)
+  palmNmsIou: 0.45,                       // Palm NMS IoU threshold (0.0-1.0)
+  palmRoiScale: 2.6,                      // Palm ROI expansion fed to the landmark model
+  maxDetections: 10,                      // Maximum hands to detect
+  minLandmarkScore: 0.5,                  // Minimum landmark confidence (0.0-1.0)
+  enableTracking: false,                  // MediaPipe-style cross-frame tracking
+  trackingConfig: const TrackingConfig(), // ROI tuning used when tracking is on
+  interpreterPoolSize: 1,                 // TFLite interpreter pool size
+  performanceConfig: const PerformanceConfig(), // Performance config (default: auto)
+  enableGestures: false,                  // Enable gesture recognition
+  gestureMinConfidence: 0.5,              // Minimum gesture confidence (0.0-1.0)
 );
 ```
+
+### Detection tuning
+
+These control the two model stages directly. The defaults match MediaPipe's shipped hand pipeline, so change them only if you need different behavior:
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `detectorConf` | 0.45 | Palm detector score threshold. Raise to reject low-confidence palms, lower to catch more hands. |
+| `palmNmsIou` | 0.45 | IoU threshold for palm non-maximum suppression. Higher keeps more overlapping detections; lower merges them harder. |
+| `palmRoiScale` | 2.6 | How much the palm box is expanded before it is cropped for the landmark model. Larger includes more context around the palm (can help large/rotated hands); smaller crops tighter. |
+| `minLandmarkScore` | 0.5 | Landmark-stage confidence gate. Hands whose landmark score falls below this are dropped. |
+| `maxDetections` | 10 | Maximum number of hands returned per frame. |
+
+### Tracking (`enableTracking` + `TrackingConfig`)
+
+With `enableTracking: true`, the detector follows each hand frame-to-frame using a landmark-derived region of interest, and only runs the palm detector to discover new hands. This greatly reduces overlay drop-outs on video. Call `resetTracking()` between unrelated inputs (a new video, or independent still images) so a stale ROI is not reused.
+
+`TrackingConfig` tunes the tracked ROI. It only takes effect when `enableTracking` is true, and its defaults port MediaPipe's hand tracking graph:
+
+```dart
+final detector = await HandDetector.create(
+  enableTracking: true,
+  trackingConfig: const TrackingConfig(
+    roiScale: 2.0,        // ROI expansion for inter-frame motion margin
+    roiShiftY: -0.1,      // shift toward the fingertips (negative = toward tips)
+    associationIou: 0.5,  // IoU above which a fresh palm counts as an already-tracked hand
+    minRoiSize: 0.03,     // drop tracking below this ROI size (normalized to the long image side)
+    maxRoiSize: 1.2,      // drop tracking above this ROI size (normalized to the long image side)
+  ),
+);
+```
+
+> Tracking is implemented on native platforms. On web, `enableTracking` and `trackingConfig` are accepted for API parity but currently ignored (palm detection runs every frame).
 
 ## Live Camera Detection
 

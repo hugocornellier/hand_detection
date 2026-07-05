@@ -60,15 +60,14 @@ class HandDetectorCore {
   List<PalmDetection> _trackedRois = const [];
   List<PalmDetection> _nextTrackedRois = const [];
 
-  // Landmark-derived ROI tuning, matching MediaPipe's
-  // hand_landmark_landmarks_to_roi.pbtxt (RectTransformationCalculator
-  // scale_x/scale_y 2.0, shift_y -0.1) so the tracked square is expanded and
-  // nudged toward the fingertips exactly as MediaPipe does. [_trackAssocIou] is
-  // the AssociationNormRectCalculator min_similarity_threshold (0.5) above
-  // which a fresh palm-derived ROI is treated as an already-tracked hand.
-  static const double _trackRoiScale = 2.0;
-  static const double _trackRoiShift = -0.1;
-  static const double _trackAssocIou = 0.5;
+  // Landmark-derived ROI tuning (MediaPipe hand_landmark_landmarks_to_roi.pbtxt
+  // RectTransformationCalculator + AssociationNormRectCalculator), configurable
+  // via [TrackingConfig]. The defaults expand the tracked square and nudge it
+  // toward the fingertips exactly as MediaPipe does, and treat a fresh
+  // palm-derived ROI overlapping a tracked one above [associationIou] as the
+  // same hand. Set in [initializeFromBuffers]; only consulted when tracking is
+  // enabled.
+  TrackingConfig _tracking = const TrackingConfig();
 
   /// Returns true when the core has been initialized with model data.
   bool get isReady => _palm != null;
@@ -83,7 +82,10 @@ class HandDetectorCore {
     required int maxDetections,
     required double minLandmarkScore,
     required double detectorConf,
+    double palmNmsIou = 0.45,
+    double palmRoiScale = 2.6,
     bool enableTracking = false,
+    TrackingConfig trackingConfig = const TrackingConfig(),
     required int interpreterPoolSize,
     required PerformanceConfig performanceConfig,
     required bool enableGestures,
@@ -96,9 +98,14 @@ class HandDetectorCore {
     _maxDetections = maxDetections;
     _minLandmarkScore = minLandmarkScore;
     _enableTracking = enableTracking;
+    _tracking = trackingConfig;
     resetTracking();
 
-    _palm = PalmDetector(scoreThreshold: detectorConf);
+    _palm = PalmDetector(
+      scoreThreshold: detectorConf,
+      nmsIouThreshold: palmNmsIou,
+      roiScale: palmRoiScale,
+    );
     if (useCompiledModel) {
       await _palm!.initializeCompiledFromBuffer(
         palmDetectionBytes,
@@ -181,7 +188,7 @@ class HandDetectorCore {
         ? associateRois(palms, tracked,
             imageWidth: imgW,
             imageHeight: imgH,
-            minSimilarityThreshold: _trackAssocIou)
+            minSimilarityThreshold: _tracking.associationIou)
         : palms;
     if (rois.length > _maxDetections) {
       // MediaPipe caps palm detections (ClipDetectionVectorSizeCalculator) and
@@ -375,8 +382,10 @@ class HandDetectorCore {
       imageWidth: imgW,
       imageHeight: imgH,
       score: score,
-      scale: _trackRoiScale,
-      shiftY: _trackRoiShift,
+      scale: _tracking.roiScale,
+      shiftY: _tracking.roiShiftY,
+      minSqnSize: _tracking.minRoiSize,
+      maxSqnSize: _tracking.maxRoiSize,
     );
   }
 

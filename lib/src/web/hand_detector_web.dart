@@ -34,9 +34,12 @@ class HandDetector with WebGpuFallback {
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
     double detectorConf = 0.45,
+    double palmNmsIou = 0.45,
+    double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
     bool enableTracking = false,
+    TrackingConfig trackingConfig = const TrackingConfig(),
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -49,9 +52,12 @@ class HandDetector with WebGpuFallback {
       mode: mode,
       landmarkModel: landmarkModel,
       detectorConf: detectorConf,
+      palmNmsIou: palmNmsIou,
+      palmRoiScale: palmRoiScale,
       maxDetections: maxDetections,
       minLandmarkScore: minLandmarkScore,
       enableTracking: enableTracking,
+      trackingConfig: trackingConfig,
       enableGestures: enableGestures,
       gestureMinConfidence: gestureMinConfidence,
       liteRtAccelerator: liteRtAccelerator,
@@ -59,7 +65,9 @@ class HandDetector with WebGpuFallback {
     return detector;
   }
 
-  final PalmDetectorWeb _palm = PalmDetectorWeb();
+  // Reassigned in [initialize] with the caller's palm thresholds; a default
+  // instance is held pre-init so [activeAccelerator] stays null-safe.
+  PalmDetectorWeb _palm = PalmDetectorWeb();
   final HandLandmarkModelWeb _landmark = HandLandmarkModelWeb();
   GestureRecognizerWeb? _gesture;
 
@@ -87,11 +95,15 @@ class HandDetector with WebGpuFallback {
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
     double detectorConf = 0.45,
+    double palmNmsIou = 0.45,
+    double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
-    // Accepted for cross-platform API parity; the web implementation runs palm
-    // detection every frame and does not implement ROI tracking yet.
+    // enableTracking / trackingConfig are accepted for cross-platform API
+    // parity; the web implementation runs palm detection every frame and does
+    // not implement ROI tracking yet, so trackingConfig has no effect here.
     bool enableTracking = false,
+    TrackingConfig trackingConfig = const TrackingConfig(),
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -108,6 +120,11 @@ class HandDetector with WebGpuFallback {
     _enableGestures = enableGestures;
     _gestureMinConfidence = gestureMinConfidence;
 
+    _palm = PalmDetectorWeb(
+      scoreThreshold: detectorConf,
+      nmsIouThreshold: palmNmsIou,
+      roiScale: palmRoiScale,
+    );
     await _palm.initialize(liteRtAccelerator: liteRtAccelerator);
     _palmReady = true;
     if (mode == HandMode.boxesAndLandmarks) {

@@ -128,6 +128,7 @@ List<PalmDetection> postprocessPalms(
   required int imageHeight,
   required int squareStandardSize,
   required int squarePaddingHalfSize,
+  double roiScale = 2.6,
   double iouThreshold = 0.45,
 }) {
   if (boxes.isEmpty) return [];
@@ -148,11 +149,11 @@ List<PalmDetection> postprocessPalms(
       final kp02X = kp2X - kp0X;
       final kp02Y = kp2Y - kp0Y;
       // MediaPipe palm_detection_detection_to_roi RectTransformationCalculator:
-      // scale_x/scale_y 2.6 on the square_long palm box, with shift_y -0.5
-      // (the center shift below). The Python reference port this file was
-      // adapted from used 2.9; 2.6 is the value MediaPipe's shipped
-      // hand_landmark_full model was trained against.
-      final sqnRrSize = 2.6 * boxSize;
+      // scale_x/scale_y ([roiScale], default 2.6) on the square_long palm box,
+      // with shift_y -0.5 (the center shift below). The Python reference port
+      // this file was adapted from used 2.9; 2.6 is the value MediaPipe's
+      // shipped hand_landmark_full model was trained against.
+      final sqnRrSize = roiScale * boxSize;
       var rotation = 0.5 * math.pi - math.atan2(-kp02Y, kp02X);
       rotation = normalizeRadians(rotation);
       var sqnRrCenterX = boxX + 0.5 * boxSize * math.sin(rotation);

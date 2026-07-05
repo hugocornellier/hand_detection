@@ -14,6 +14,13 @@
 //     --dart-define=HAND_VIDEO_TRACKING=true \
 //     --dart-define=HAND_VIDEO_CONF=0.5 \
 //     --dart-define=HAND_VIDEO_MAX_HANDS=2
+//
+// Optional gesture badges (off by default). Overlays a stabilized gesture
+// label + emoji icon above each hand. Icons are <GestureType>.png files (Noto
+// emoji PNGs) in the HAND_VIDEO_ICONS directory; detection is unaffected:
+//
+//     --dart-define=HAND_VIDEO_GESTURES=true \
+//     --dart-define=HAND_VIDEO_ICONS=/abs/path/to/icons
 
 import 'dart:io';
 import 'dart:math' as math;
@@ -40,6 +47,22 @@ const bool _drawBoxes =
 // overlay from flickering off (the bounding box used to hide those gaps).
 // 0 keeps the original verbatim behavior.
 const int _holdFrames = int.fromEnvironment('HAND_VIDEO_HOLD', defaultValue: 0);
+
+// ─────────────────────────── Gesture badges ───────────────────────────────
+// Opt-in. When enabled, the detector runs gesture recognition and a stabilized
+// gesture label + emoji icon is drawn above each hand. Drawing-only.
+const bool _enableGestures =
+    bool.fromEnvironment('HAND_VIDEO_GESTURES', defaultValue: false);
+const String _iconsDir = String.fromEnvironment('HAND_VIDEO_ICONS');
+const String _gestureConfStr =
+    String.fromEnvironment('HAND_VIDEO_GESTURE_CONF', defaultValue: '0.55');
+// A gesture must repeat for this many consecutive frames before it is shown,
+// and it is held for this many frames after it stops being detected. Together
+// they remove single-frame flicker and brief unknown/low-confidence dips.
+const int _gestureConfirm =
+    int.fromEnvironment('HAND_VIDEO_GESTURE_CONFIRM', defaultValue: 3);
+const int _gestureHold =
+    int.fromEnvironment('HAND_VIDEO_GESTURE_HOLD', defaultValue: 6);
 
 // Overlay style, matching the VideoFileScreen defaults.
 const int _boundingBoxColor = 0xFFFF9800; // orange
@@ -69,6 +92,7 @@ void main() {
 
     final conf = double.tryParse(_confStr) ?? 0.5;
     final maxHands = int.tryParse(_maxHandsStr) ?? 2;
+    final gestureConf = double.tryParse(_gestureConfStr) ?? 0.55;
 
     final detector = await HandDetector.create(
       mode: HandMode.boxesAndLandmarks,
@@ -77,13 +101,22 @@ void main() {
       maxDetections: maxHands,
       minLandmarkScore: conf,
       performanceConfig: const PerformanceConfig.xnnpack(),
-      enableGestures: false,
+      enableGestures: _enableGestures,
       enableTracking: _enableTracking,
       useCompiledModel: false,
     );
+
+    // Load the gesture-badge icons once (512px BGR + binary alpha mask each).
+    // They are resized per-video to the badge size inside _processVideo.
+    final Map<GestureType, _RawIcon> rawIcons =
+        (_enableGestures && _iconsDir.isNotEmpty)
+            ? _loadRawIcons(_iconsDir)
+            : <GestureType, _RawIcon>{};
+
     // ignore: avoid_print
     print('CONFIG in=$_inDir out=$outDir tracking=$_enableTracking '
-        'conf=$conf maxHands=$maxHands');
+        'conf=$conf maxHands=$maxHands gestures=$_enableGestures '
+        'icons=${rawIcons.length} gestureConf=$gestureConf');
 
     final inputs = inputDir
         .listSync()
@@ -95,19 +128,22 @@ void main() {
       final name = f.uri.pathSegments.last.replaceAll(RegExp(r'\.mp4$'), '');
       final outPath = '$outDir/${name}_annot.mp4';
       try {
-        await _processVideo(detector, f.path, outPath);
+        await _processVideo(detector, f.path, outPath, rawIcons, gestureConf);
       } catch (e, st) {
         // ignore: avoid_print
         print('ERROR $name: $e\n$st');
       }
     }
 
+    for (final ri in rawIcons.values) {
+      ri.dispose();
+    }
     await detector.dispose();
   }, timeout: const Timeout(Duration(minutes: 45)));
 }
 
-Future<void> _processVideo(
-    HandDetector detector, String path, String outPath) async {
+Future<void> _processVideo(HandDetector detector, String path, String outPath,
+    Map<GestureType, _RawIcon> rawIcons, double gestureConf) async {
   final cap = cv.VideoCapture.fromFile(path);
   if (!cap.isOpened) {
     cap.release();
@@ -125,9 +161,27 @@ Future<void> _processVideo(
     throw StateError('Could not open writer for $outPath ("avc1" unavailable)');
   }
 
+  // Per-video badge sizing: scale to the shorter side so portrait and landscape
+  // clips get proportionate badges. Resize each icon to the badge size once.
+  final int iconD = math.min(width, height) > 0
+      ? (math.min(width, height) * 0.06).round().clamp(40, 160)
+      : 64;
+  final Map<GestureType, _SizedIcon> icons = {};
+  rawIcons.forEach((g, ri) {
+    icons[g] = _SizedIcon(
+      cv.resize(ri.bgr, (iconD, iconD)),
+      cv.resize(ri.mask, (iconD, iconD)),
+    );
+  });
+
   // New video: clear cross-frame state in both the detector and the smoother.
   await detector.resetTracking();
-  final smoother = HandSmoother(holdFrames: _holdFrames);
+  final smoother = HandSmoother(
+    holdFrames: _holdFrames,
+    gestureConf: gestureConf,
+    gestureConfirm: _gestureConfirm,
+    gestureHold: _gestureHold,
+  );
   final sw = Stopwatch()..start();
   cv.Mat? frame;
   int idx = 0;
@@ -150,7 +204,7 @@ Future<void> _processVideo(
       } else {
         oneHandFrames.add(idx);
       }
-      _drawHandsOnMat(frame, hands);
+      _drawHandsOnMat(frame, hands, icons, iconD);
       writer.write(frame);
       idx++;
     }
@@ -159,6 +213,9 @@ Future<void> _processVideo(
     cap.release();
     writer.release();
     frame?.dispose();
+    for (final si in icons.values) {
+      si.dispose();
+    }
   }
 
   final base = path.split('/').last;
@@ -178,7 +235,8 @@ cv.Scalar _bgr(int argb) {
   return cv.Scalar(b.toDouble(), g.toDouble(), r.toDouble());
 }
 
-void _drawHandsOnMat(cv.Mat mat, List<Hand> hands) {
+void _drawHandsOnMat(cv.Mat mat, List<Hand> hands,
+    Map<GestureType, _SizedIcon> icons, int iconD) {
   if (hands.isEmpty) return;
   final black = cv.Scalar(0, 0, 0);
   final w = mat.cols;
@@ -216,50 +274,191 @@ void _drawHandsOnMat(cv.Mat mat, List<Hand> hands) {
       }
     }
 
-    if (!_drawBoxes) continue;
+    if (_drawBoxes) {
+      final boxColor = _bgr(_boundingBoxColor);
+      final bb = hand.boundingBox;
+      final l = bb.left.toInt().clamp(0, w - 1);
+      final t = bb.top.toInt().clamp(0, h - 1);
+      final r = bb.right.toInt().clamp(0, w - 1);
+      final b = bb.bottom.toInt().clamp(0, h - 1);
+      cv.rectangle(
+        mat,
+        cv.Rect(l, t, (r - l).clamp(1, w), (b - t).clamp(1, h)),
+        boxColor,
+        thickness: math.max(1, _boundingBoxThickness.round()),
+      );
 
-    final boxColor = _bgr(_boundingBoxColor);
-    final bb = hand.boundingBox;
-    final l = bb.left.toInt().clamp(0, w - 1);
-    final t = bb.top.toInt().clamp(0, h - 1);
-    final r = bb.right.toInt().clamp(0, w - 1);
-    final b = bb.bottom.toInt().clamp(0, h - 1);
-    cv.rectangle(
-      mat,
-      cv.Rect(l, t, (r - l).clamp(1, w), (b - t).clamp(1, h)),
-      boxColor,
-      thickness: math.max(1, _boundingBoxThickness.round()),
-    );
-
-    final parts = <String>['${(hand.score * 100).toStringAsFixed(0)}%'];
-    if (hand.handedness != null) {
-      parts.add(hand.handedness == Handedness.right ? 'R' : 'L');
+      final parts = <String>['${(hand.score * 100).toStringAsFixed(0)}%'];
+      if (hand.handedness != null) {
+        parts.add(hand.handedness == Handedness.right ? 'R' : 'L');
+      }
+      final label = parts.join('  ');
+      final (sz, _) = cv.getTextSize(label, cv.FONT_HERSHEY_SIMPLEX, 0.6, 2);
+      final labelTop = (t - sz.height - 8).clamp(0, h - 1);
+      final labelW = (sz.width + 8).clamp(1, w - l);
+      final labelH = (sz.height + 8).clamp(1, h - labelTop);
+      cv.rectangle(
+        mat,
+        cv.Rect(l, labelTop, labelW, labelH),
+        boxColor,
+        thickness: -1,
+      );
+      cv.putText(
+        mat,
+        label,
+        cv.Point(l + 4, labelTop + sz.height + 2),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        black,
+        thickness: 2,
+      );
     }
-    final label = parts.join('  ');
-    final (sz, _) = cv.getTextSize(label, cv.FONT_HERSHEY_SIMPLEX, 0.6, 2);
-    final labelTop = (t - sz.height - 8).clamp(0, h - 1);
-    final labelW = (sz.width + 8).clamp(1, w - l);
-    final labelH = (sz.height + 8).clamp(1, h - labelTop);
-    cv.rectangle(
-      mat,
-      cv.Rect(l, labelTop, labelW, labelH),
-      boxColor,
-      thickness: -1,
-    );
-    cv.putText(
-      mat,
-      label,
-      cv.Point(l + 4, labelTop + sz.height + 2),
-      cv.FONT_HERSHEY_SIMPLEX,
-      0.6,
-      black,
-      thickness: 2,
-    );
+
+    _drawGestureBadge(mat, hand, icons, iconD);
   }
 }
 
+// Draws a stadium ("pill") badge above the hand: [emoji icon] + gesture name,
+// on a solid dark background so it reads over any footage. No-op unless the
+// hand carries a stabilized gesture.
+void _drawGestureBadge(
+    cv.Mat mat, Hand hand, Map<GestureType, _SizedIcon> icons, int iconD) {
+  final g = hand.gesture;
+  if (g == null || g.type == GestureType.unknown) return;
+  final label = _gestureLabelText[g.type];
+  if (label == null) return;
+
+  final int w = mat.cols;
+  final int h = mat.rows;
+
+  final double fontScale = iconD / 50.0;
+  final int thickness = math.max(2, (iconD / 26).round());
+  final (textSz, _) =
+      cv.getTextSize(label, cv.FONT_HERSHEY_DUPLEX, fontScale, thickness);
+
+  final _SizedIcon? icon = icons[g.type];
+  final int pad = (iconD * 0.34).round();
+  final int gap = icon != null ? (iconD * 0.28).round() : 0;
+  final int iconW = icon != null ? iconD : 0;
+  final int contentH = math.max(iconD, textSz.height);
+  final int pillH = contentH + 2 * pad;
+  final int pillW = pad + iconW + gap + textSz.width + pad;
+  if (pillW >= w || pillH >= h) return;
+
+  // Center above the box; clamp the whole pill into the frame.
+  final bb = hand.boundingBox;
+  final double cx = (bb.left + bb.right) / 2;
+  final int px0 = (cx - pillW / 2).round().clamp(2, w - pillW - 2);
+  int py0 = (bb.top - pillH - iconD * 0.25).round();
+  if (py0 < 2) py0 = (bb.top + iconD * 0.25).round();
+  py0 = py0.clamp(2, h - pillH - 2);
+
+  // Stadium background: a rectangle capped by two half-circles.
+  final pill = cv.Scalar(28, 26, 24); // near-black, faint warm tint (BGR)
+  final int r = pillH ~/ 2;
+  cv.rectangle(
+    mat,
+    cv.Rect(px0 + r, py0, pillW - 2 * r, pillH),
+    pill,
+    thickness: -1,
+  );
+  cv.circle(mat, cv.Point(px0 + r, py0 + r), r, pill, thickness: -1);
+  cv.circle(mat, cv.Point(px0 + pillW - r, py0 + r), r, pill, thickness: -1);
+
+  // Emoji icon, alpha-composited over the (now opaque) pill background.
+  if (icon != null) {
+    final int ix = px0 + pad;
+    final int iy = py0 + (pillH - iconD) ~/ 2;
+    final roi = mat.region(cv.Rect(ix, iy, iconD, iconD));
+    icon.bgr.copyTo(roi, mask: icon.mask);
+    roi.dispose();
+  }
+
+  // Gesture name.
+  final int tx = px0 + pad + iconW + gap;
+  final int ty = py0 + (pillH + textSz.height) ~/ 2;
+  cv.putText(
+    mat,
+    label,
+    cv.Point(tx, ty),
+    cv.FONT_HERSHEY_DUPLEX,
+    fontScale,
+    cv.Scalar(255, 255, 255),
+    thickness: thickness,
+  );
+}
+
+// ───────────────────────────── Gesture icons ──────────────────────────────
+
+const Map<GestureType, String> _gestureIconFile = {
+  GestureType.thumbUp: 'thumbUp',
+  GestureType.thumbDown: 'thumbDown',
+  GestureType.victory: 'victory',
+  GestureType.openPalm: 'openPalm',
+  GestureType.closedFist: 'closedFist',
+  GestureType.pointingUp: 'pointingUp',
+  GestureType.iLoveYou: 'iLoveYou',
+};
+
+const Map<GestureType, String> _gestureLabelText = {
+  GestureType.thumbUp: 'Thumbs Up',
+  GestureType.thumbDown: 'Thumbs Down',
+  GestureType.victory: 'Victory',
+  GestureType.openPalm: 'Open Palm',
+  GestureType.closedFist: 'Closed Fist',
+  GestureType.pointingUp: 'Pointing Up',
+  GestureType.iLoveYou: 'I Love You',
+};
+
+// A gesture icon at native (512px) resolution: BGR color + binary alpha mask.
+class _RawIcon {
+  final cv.Mat bgr;
+  final cv.Mat mask;
+  _RawIcon(this.bgr, this.mask);
+  void dispose() {
+    bgr.dispose();
+    mask.dispose();
+  }
+}
+
+// A gesture icon resized to the per-video badge size.
+class _SizedIcon {
+  final cv.Mat bgr;
+  final cv.Mat mask;
+  _SizedIcon(this.bgr, this.mask);
+  void dispose() {
+    bgr.dispose();
+    mask.dispose();
+  }
+}
+
+Map<GestureType, _RawIcon> _loadRawIcons(String dir) {
+  final out = <GestureType, _RawIcon>{};
+  _gestureIconFile.forEach((g, base) {
+    final path = '$dir/$base.png';
+    if (!File(path).existsSync()) return;
+    final raw = cv.imread(path, flags: cv.IMREAD_UNCHANGED);
+    if (raw.isEmpty || raw.channels != 4) {
+      raw.dispose();
+      return;
+    }
+    final bgr = cv.cvtColor(raw, cv.COLOR_BGRA2BGR);
+    final ch = cv.split(raw);
+    // Anti-aliased alpha -> a binary mask; drop the near-transparent fringe.
+    final (_, mask) = cv.threshold(ch[3], 40, 255, cv.THRESH_BINARY);
+    for (final c in ch) {
+      c.dispose();
+    }
+    raw.dispose();
+    out[g] = _RawIcon(bgr, mask);
+  });
+  return out;
+}
+
 // ─────────────────────────── Hand Smoother ────────────────────────────────
-// Verbatim from example/lib/main.dart.
+// Lifted from example/lib/main.dart, extended here with per-track gesture
+// stabilization (consecutive-frame confirm + post-detection hold) so gesture
+// badges do not flicker frame-to-frame.
 
 class HandSmoother {
   bool enabled;
@@ -270,8 +469,17 @@ class HandSmoother {
   static const int _minVisibleLandmarks = 12;
   final List<_HandTrack> _tracks = [];
   final int holdFrames;
+  final double gestureConf;
+  final int gestureConfirm;
+  final int gestureHold;
 
-  HandSmoother({this.enabled = true, this.holdFrames = 0});
+  HandSmoother({
+    this.enabled = true,
+    this.holdFrames = 0,
+    this.gestureConf = 0.55,
+    this.gestureConfirm = 3,
+    this.gestureHold = 6,
+  });
 
   void reset() => _tracks.clear();
 
@@ -327,7 +535,9 @@ class HandSmoother {
       track.lastRight = bb.right;
       track.lastBottom = bb.bottom;
       track.hasBox = true;
-      final sh = _smoothHand(hands[p], track, tSec);
+      final stable = track.updateGesture(
+          hands[p].gesture, gestureConf, gestureConfirm, gestureHold);
+      final sh = _smoothHand(hands[p], track, tSec, stable);
       if (holdFrames > 0) {
         if (_wellFormed(sh)) {
           // Good pose: draw it and remember it.
@@ -363,7 +573,8 @@ class HandSmoother {
     return out;
   }
 
-  Hand _smoothHand(Hand hand, _HandTrack track, double tSec) {
+  Hand _smoothHand(
+      Hand hand, _HandTrack track, double tSec, GestureResult? gesture) {
     if (hand.landmarks.isEmpty) return hand;
     final smoothed = <HandLandmark>[];
     for (int i = 0; i < hand.landmarks.length; i++) {
@@ -395,7 +606,7 @@ class HandSmoother {
       rotatedCenterX: hand.rotatedCenterX,
       rotatedCenterY: hand.rotatedCenterY,
       rotatedSize: hand.rotatedSize,
-      gesture: hand.gesture,
+      gesture: gesture,
     );
   }
 
@@ -427,4 +638,44 @@ class _HandTrack {
   // it, used to bridge short detector/occlusion gaps in a skeleton-only overlay.
   Hand? lastDrawn;
   int blankFrames = 0;
+
+  // Gesture stabilization state.
+  GestureType? _gCandidate;
+  int _gCandidateCount = 0;
+  GestureType? _gStable;
+  double _gStableConf = 0;
+  int _gHold = 0;
+
+  // Feeds this frame's raw gesture in and returns the stabilized gesture (or
+  // null). A gesture is shown only after [confirmFrames] consecutive detections
+  // and is held for [holdFrames] frames once detection lapses.
+  GestureResult? updateGesture(
+      GestureResult? raw, double minConf, int confirmFrames, int holdFrames) {
+    if (raw != null &&
+        raw.type != GestureType.unknown &&
+        raw.confidence >= minConf) {
+      final t = raw.type;
+      if (t == _gCandidate) {
+        _gCandidateCount++;
+      } else {
+        _gCandidate = t;
+        _gCandidateCount = 1;
+      }
+      if (_gCandidateCount >= confirmFrames || _gStable == t) {
+        _gStable = t;
+        _gStableConf = raw.confidence;
+        _gHold = holdFrames;
+      }
+    } else {
+      _gCandidate = null;
+      _gCandidateCount = 0;
+      if (_gHold > 0) {
+        _gHold--;
+      } else {
+        _gStable = null;
+      }
+    }
+    if (_gStable == null) return null;
+    return GestureResult(type: _gStable!, confidence: _gStableConf);
+  }
 }

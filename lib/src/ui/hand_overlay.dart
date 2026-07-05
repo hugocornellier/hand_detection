@@ -1,6 +1,7 @@
 import 'dart:math' show cos, max, min, sin;
 import 'package:flutter/material.dart';
-import 'package:flutter_litert/flutter_litert.dart' show drawLandmarkMarker;
+import 'package:flutter_litert/flutter_litert.dart'
+    show CoverFitTransform, drawLandmarkMarker;
 import '../types.dart';
 
 /// Calculates the 4 corner points of a rotated rectangle.
@@ -211,28 +212,20 @@ class CameraHandOverlayPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (hands.isEmpty) return;
 
-    final double sourceWidth = imageSize.width;
-    final double sourceHeight = imageSize.height;
-
-    final double sourceAspectRatio = sourceWidth / sourceHeight;
-    final double viewportAspectRatio = size.width / size.height;
-
-    double scaleX, scaleY;
-    double offsetX = 0, offsetY = 0;
-
-    if (sourceAspectRatio > viewportAspectRatio) {
-      scaleY = size.height / sourceHeight;
-      scaleX = scaleY;
-      offsetX = (size.width - sourceWidth * scaleX) / 2;
-    } else {
-      scaleX = size.width / sourceWidth;
-      scaleY = scaleX;
-      offsetY = (size.height - sourceHeight * scaleY) / 2;
-    }
-
-    double tx(double x) => mirrorHorizontally
-        ? (sourceWidth - x) * scaleX + offsetX
-        : x * scaleX + offsetX;
+    final t = CoverFitTransform.cover(
+      sourceWidth: imageSize.width,
+      sourceHeight: imageSize.height,
+      viewWidth: size.width,
+      viewHeight: size.height,
+      mirror: mirrorHorizontally,
+    );
+    // scaleX and scaleY are equal (uniform cover-fit); kept as separate locals
+    // so the draw helpers below are unchanged.
+    final double scaleX = t.scale;
+    final double scaleY = t.scale;
+    final double offsetX = t.offsetX;
+    final double offsetY = t.offsetY;
+    double tx(double x) => t.map(x, 0).dx;
 
     for (final hand in hands) {
       _drawBbox(canvas, hand, tx, scaleX, scaleY, offsetX, offsetY);

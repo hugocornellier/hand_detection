@@ -21,6 +21,55 @@ enum HandMode {
   boxesAndLandmarks,
 }
 
+/// Tuning for MediaPipe-style detection + tracking (see `HandDetector`'s
+/// `enableTracking`).
+///
+/// Only takes effect when tracking is enabled. Each detected hand's
+/// landmark-derived region of interest (ROI) is carried to the next frame and
+/// landmarked directly, so a hand persists without the palm detector
+/// re-finding it every frame. These fields govern how that tracked ROI is
+/// built, sized, and matched against fresh palm detections. The defaults port
+/// MediaPipe's hand tracking graph and are correct for most callers; tune them
+/// only if tracking drifts, clings to stale regions, or drops hands too eagerly.
+class TrackingConfig {
+  /// Expansion factor applied to the tracked ROI's long side, giving margin
+  /// for inter-frame motion (MediaPipe RectTransformationCalculator
+  /// `scale_x`/`scale_y`). Larger values track faster motion but crop in more
+  /// background. Default: 2.0.
+  final double roiScale;
+
+  /// Fraction of the ROI's own height to shift the tracked box along the hand
+  /// axis, nudging it toward the fingertips (MediaPipe `shift_y`). Negative
+  /// shifts toward the fingertips. Default: -0.1.
+  final double roiShiftY;
+
+  /// Minimum axis-aligned IoU above which a fresh palm-derived ROI is treated
+  /// as an already-tracked hand and dropped in favour of the stable tracked ROI
+  /// (MediaPipe AssociationNormRectCalculator `min_similarity_threshold`).
+  /// Default: 0.5.
+  final double associationIou;
+
+  /// Smallest tracked ROI size, normalised by the longest image side, below
+  /// which tracking is dropped so the palm detector re-acquires the hand.
+  /// Default: 0.03.
+  final double minRoiSize;
+
+  /// Largest tracked ROI size, normalised by the longest image side, above
+  /// which tracking is dropped so the palm detector re-acquires the hand.
+  /// Default: 1.2.
+  final double maxRoiSize;
+
+  /// Creates a tracking configuration. All defaults match MediaPipe's shipped
+  /// hand tracking graph.
+  const TrackingConfig({
+    this.roiScale = 2.0,
+    this.roiShiftY = -0.1,
+    this.associationIou = 0.5,
+    this.minRoiSize = 0.03,
+    this.maxRoiSize = 1.2,
+  });
+}
+
 /// Recognized hand gesture types from MediaPipe gesture classifier.
 ///
 /// The gesture classifier recognizes 7 distinct gestures plus an "unknown" category

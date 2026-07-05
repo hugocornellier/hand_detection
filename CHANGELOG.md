@@ -5,6 +5,9 @@
 * Tracking ROIs are gated by `minLandmarkScore` (keep it near 0.5 with tracking; permissive thresholds let garbage frames perpetuate) and guarded against degenerate or runaway regions, so a bad frame falls back to palm re-detection instead of drifting.
 * Web: `enableTracking` is accepted for cross-platform API parity (the web implementation still runs palm detection every frame).
 * Example app: the Live Camera and Video File screens expose a tracking toggle in their settings, off by default.
+* Expose palm post-processing tuning on `HandDetector.create` / `initialize` / `initializeFromBuffers`: `palmNmsIou` (palm non-maximum-suppression IoU) and `palmRoiScale` (how much the palm box is expanded before it is cropped for the landmark model). Both were previously hardcoded (0.45 / 2.6); the defaults are unchanged.
+* Add `TrackingConfig` to tune the cross-frame tracked ROI (`roiScale`, `roiShiftY`, `associationIou`, `minRoiSize`, `maxRoiSize`), passed via `trackingConfig:`. These were previously hardcoded constants; the defaults port MediaPipe's hand tracking graph and are unchanged. Only takes effect when `enableTracking` is true.
+* Web: `palmNmsIou` / `palmRoiScale` are honored (they feed the shared palm post-processing), and the web palm detector now applies `detectorConf` (previously accepted but ignored). `trackingConfig` is accepted for API parity but ignored (web has no ROI tracking yet).
 
 ## 3.2.0
 

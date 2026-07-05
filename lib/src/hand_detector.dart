@@ -19,9 +19,12 @@ class _DetectionIsolateStartupData {
   final String modeName;
   final String landmarkModelName;
   final double detectorConf;
+  final double palmNmsIou;
+  final double palmRoiScale;
   final int maxDetections;
   final double minLandmarkScore;
   final bool enableTracking;
+  final TrackingConfig trackingConfig;
   final int interpreterPoolSize;
   final String performanceModeName;
   final int? numThreads;
@@ -40,9 +43,12 @@ class _DetectionIsolateStartupData {
     required this.modeName,
     required this.landmarkModelName,
     required this.detectorConf,
+    required this.palmNmsIou,
+    required this.palmRoiScale,
     required this.maxDetections,
     required this.minLandmarkScore,
     required this.enableTracking,
+    required this.trackingConfig,
     required this.interpreterPoolSize,
     required this.performanceModeName,
     required this.numThreads,
@@ -123,9 +129,12 @@ class HandDetector {
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
     double detectorConf = 0.45,
+    double palmNmsIou = 0.45,
+    double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
     bool enableTracking = false,
+    TrackingConfig trackingConfig = const TrackingConfig(),
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -140,9 +149,12 @@ class HandDetector {
       mode: mode,
       landmarkModel: landmarkModel,
       detectorConf: detectorConf,
+      palmNmsIou: palmNmsIou,
+      palmRoiScale: palmRoiScale,
       maxDetections: maxDetections,
       minLandmarkScore: minLandmarkScore,
       enableTracking: enableTracking,
+      trackingConfig: trackingConfig,
       interpreterPoolSize: interpreterPoolSize,
       performanceConfig: performanceConfig,
       enableGestures: enableGestures,
@@ -178,6 +190,10 @@ class HandDetector {
   /// - [mode]: Detection mode (boxes only or boxes + landmarks). Default: [HandMode.boxesAndLandmarks]
   /// - [landmarkModel]: Hand landmark model variant. Default: [HandLandmarkModel.full]
   /// - [detectorConf]: Palm detection confidence threshold (0.0-1.0). Default: 0.45
+  /// - [palmNmsIou]: IoU threshold for palm non-maximum suppression (0.0-1.0).
+  ///   Higher keeps more overlapping detections; lower merges them harder. Default: 0.45
+  /// - [palmRoiScale]: Expansion factor for the palm ROI fed to the landmark
+  ///   model. Larger includes more context around the palm. Default: 2.6
   /// - [maxDetections]: Maximum number of hands to detect. Default: 10
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
   /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1.
@@ -195,13 +211,19 @@ class HandDetector {
   ///   region of interest, and the palm detector only runs to find new hands.
   ///   This greatly reduces overlay drop-outs on video. Call [resetTracking]
   ///   between unrelated inputs. Default: false (palm detection every frame).
+  /// - [trackingConfig]: Tuning for the ROI carried between frames when
+  ///   [enableTracking] is true (expansion, shift, association IoU, size bounds).
+  ///   Ignored when tracking is off. Default: [TrackingConfig] (MediaPipe values).
   Future<void> initialize({
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
     double detectorConf = 0.45,
+    double palmNmsIou = 0.45,
+    double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
     bool enableTracking = false,
+    TrackingConfig trackingConfig = const TrackingConfig(),
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -260,9 +282,12 @@ class HandDetector {
       mode: mode,
       landmarkModel: landmarkModel,
       detectorConf: detectorConf,
+      palmNmsIou: palmNmsIou,
+      palmRoiScale: palmRoiScale,
       maxDetections: maxDetections,
       minLandmarkScore: minLandmarkScore,
       enableTracking: enableTracking,
+      trackingConfig: trackingConfig,
       interpreterPoolSize: effectivePoolSize,
       performanceConfig: performanceConfig,
       enableGestures: enableGestures,
@@ -287,6 +312,9 @@ class HandDetector {
   /// - [mode]: Detection mode. Default: [HandMode.boxesAndLandmarks]
   /// - [landmarkModel]: Hand landmark model variant. Default: [HandLandmarkModel.full]
   /// - [detectorConf]: Palm detection confidence threshold. Default: 0.45
+  /// - [palmNmsIou]: IoU threshold for palm non-maximum suppression. Default: 0.45
+  /// - [palmRoiScale]: Expansion factor for the palm ROI fed to the landmark model. Default: 2.6
+  /// - [trackingConfig]: ROI tuning used when [enableTracking] is true. Default: [TrackingConfig]
   /// - [maxDetections]: Maximum number of hands to detect. Default: 10
   /// - [minLandmarkScore]: Minimum landmark confidence score. Default: 0.5
   /// - [interpreterPoolSize]: Number of landmark model interpreter instances. Default: 1.
@@ -302,9 +330,12 @@ class HandDetector {
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
     double detectorConf = 0.45,
+    double palmNmsIou = 0.45,
+    double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
     bool enableTracking = false,
+    TrackingConfig trackingConfig = const TrackingConfig(),
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool enableGestures = false,
@@ -332,9 +363,12 @@ class HandDetector {
         mode: mode,
         landmarkModel: landmarkModel,
         detectorConf: detectorConf,
+        palmNmsIou: palmNmsIou,
+        palmRoiScale: palmRoiScale,
         maxDetections: maxDetections,
         minLandmarkScore: minLandmarkScore,
         enableTracking: enableTracking,
+        trackingConfig: trackingConfig,
         interpreterPoolSize: effectivePoolSize,
         performanceConfig: performanceConfig,
         enableGestures: enableGestures,
@@ -613,7 +647,10 @@ class HandDetector {
         maxDetections: data.maxDetections,
         minLandmarkScore: data.minLandmarkScore,
         detectorConf: data.detectorConf,
+        palmNmsIou: data.palmNmsIou,
+        palmRoiScale: data.palmRoiScale,
         enableTracking: data.enableTracking,
+        trackingConfig: data.trackingConfig,
         interpreterPoolSize: data.interpreterPoolSize,
         performanceConfig: PerformanceConfig(
           mode: performanceMode,
@@ -718,9 +755,12 @@ class _HandDetectorWorker extends IsolateWorkerBase {
     required HandMode mode,
     required HandLandmarkModel landmarkModel,
     required double detectorConf,
+    required double palmNmsIou,
+    required double palmRoiScale,
     required int maxDetections,
     required double minLandmarkScore,
     required bool enableTracking,
+    required TrackingConfig trackingConfig,
     required int interpreterPoolSize,
     required PerformanceConfig performanceConfig,
     required bool enableGestures,
@@ -754,9 +794,12 @@ class _HandDetectorWorker extends IsolateWorkerBase {
           modeName: mode.name,
           landmarkModelName: landmarkModel.name,
           detectorConf: detectorConf,
+          palmNmsIou: palmNmsIou,
+          palmRoiScale: palmRoiScale,
           maxDetections: maxDetections,
           minLandmarkScore: minLandmarkScore,
           enableTracking: enableTracking,
+          trackingConfig: trackingConfig,
           interpreterPoolSize: interpreterPoolSize,
           performanceModeName: performanceConfig.mode.name,
           numThreads: performanceConfig.numThreads,
