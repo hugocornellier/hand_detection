@@ -52,3 +52,23 @@ example/assets/
 # Example Podfile (gitignored; not needed in the published tarball).
 example/**/Podfile
 example/**/Podfile.lock
+
+# Package tests, dev scripts, demo media: not needed by consumers of the published archive
+test/
+android/src/test/
+sample_videos/
+third_party/
+runAllTests.sh
+runBenchmark.sh
+scripts.txt
+
+# Example apps: keep example/lib and example/pubspec.yaml (pub.dev Example tab and pana);
+# exclude runner scaffolding and tests, which only matter when cloning from GitHub
+example/android/
+example/ios/
+example/macos/
+example/windows/
+example/linux/
+example/web/
+example/integration_test/
+example_web/
