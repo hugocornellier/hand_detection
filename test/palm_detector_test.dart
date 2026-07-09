@@ -337,9 +337,10 @@ void main() {
   });
 
   group('PalmDetector constructor', () {
-    test('default score threshold is 0.45', () {
+    test('defaults match MediaPipe (0.5 score floor, 0.3 NMS IoU)', () {
       final detector = PalmDetector();
-      expect(detector.scoreThreshold, 0.45);
+      expect(detector.scoreThreshold, 0.5);
+      expect(detector.nmsIouThreshold, 0.3);
     });
 
     test('custom score threshold', () {

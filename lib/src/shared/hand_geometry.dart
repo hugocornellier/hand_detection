@@ -129,7 +129,7 @@ List<PalmDetection> postprocessPalms(
   required int squareStandardSize,
   required int squarePaddingHalfSize,
   double roiScale = 2.6,
-  double iouThreshold = 0.45,
+  double iouThreshold = 0.3,
 }) {
   if (boxes.isEmpty) return [];
 

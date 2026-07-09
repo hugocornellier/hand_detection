@@ -27,7 +27,7 @@ class HandDetectorIsolate {
   static Future<HandDetectorIsolate> spawn({
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
-    double detectorConf = 0.45,
+    double detectorConf = 0.5,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,

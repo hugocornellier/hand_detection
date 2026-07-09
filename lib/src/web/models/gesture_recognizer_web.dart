@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
     show LiteRtInterpreter;
+import 'package:flutter_litert/src/web/web_detector_utils.dart'
+    show resolveWebAccelerator, logCompileFallback;
 
 import '../../shared/hand_types.dart';
 
@@ -43,13 +45,22 @@ class GestureRecognizerWeb {
     final clsBytes =
         (await rootBundle.load(classifierPath)).buffer.asUint8List();
 
-    final String resolved =
-        liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
+    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
     _embedder =
         await LiteRtInterpreter.fromBytes(embBytes, accelerator: resolved);
     _classifier =
         await LiteRtInterpreter.fromBytes(clsBytes, accelerator: resolved);
-    _activeAccelerator = resolved;
+    _activeAccelerator = _embedder!.activeAccelerator;
+    logCompileFallback(
+      model: 'GestureEmbedder',
+      requested: resolved,
+      actual: _embedder!.activeAccelerator,
+    );
+    logCompileFallback(
+      model: 'GestureClassifier',
+      requested: resolved,
+      actual: _classifier!.activeAccelerator,
+    );
 
     _handInput = Float32List(21 * 3);
     _handednessInput = Float32List(1);

@@ -194,10 +194,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_litert
-      sha256: e34f55e4a948c4c45497c76f1c790655aef525f57d5940f9f59601d97eaa9d76
+      sha256: "0e98e7af177699657b5b8cc10dcf875b5e96f73acfd5020d2611c48b0487c6e8"
       url: "https://pub.dev"
     source: hosted
-    version: "3.2.0"
+    version: "3.4.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -222,7 +222,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "3.2.0"
+    version: "3.4.0"
   hooks:
     dependency: transitive
     description:

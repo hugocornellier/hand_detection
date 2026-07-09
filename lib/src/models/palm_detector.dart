@@ -87,8 +87,8 @@ class PalmDetector {
   /// Creates a palm detector with the specified score threshold, NMS IoU
   /// threshold, and ROI expansion scale.
   PalmDetector({
-    this.scoreThreshold = 0.45,
-    this.nmsIouThreshold = 0.45,
+    this.scoreThreshold = 0.5,
+    this.nmsIouThreshold = 0.3,
     this.roiScale = 2.6,
   });
 

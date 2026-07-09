@@ -33,8 +33,8 @@ class HandDetector with WebGpuFallback {
   static Future<HandDetector> create({
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
-    double detectorConf = 0.45,
-    double palmNmsIou = 0.45,
+    double detectorConf = 0.5,
+    double palmNmsIou = 0.3,
     double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
@@ -94,8 +94,8 @@ class HandDetector with WebGpuFallback {
   Future<void> initialize({
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
-    double detectorConf = 0.45,
-    double palmNmsIou = 0.45,
+    double detectorConf = 0.5,
+    double palmNmsIou = 0.3,
     double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
@@ -135,6 +135,21 @@ class HandDetector with WebGpuFallback {
     if (enableGestures && mode == HandMode.boxesAndLandmarks) {
       _gesture = GestureRecognizerWeb(minConfidence: gestureMinConfidence);
       await _gesture!.initialize(liteRtAccelerator: liteRtAccelerator);
+    }
+
+    // Catch slow-but-functional WebGPU stacks (e.g. Firefox) that the
+    // error-driven fallback can never see: 'auto' requests that landed on
+    // WebGPU get a timed warmup and swap to WASM past the budget.
+    if (liteRtAccelerator == 'auto' && activeAccelerator == 'webgpu') {
+      final web.HTMLCanvasElement probe = web.HTMLCanvasElement()
+        ..width = 64
+        ..height = 64;
+      final ctx = probe.getContext('2d') as web.CanvasRenderingContext2D;
+      ctx.fillStyle = 'rgb(127,127,127)'.toJS;
+      ctx.fillRect(0, 0, 64, 64);
+      await maybeSwapIfWebGpuSlow(
+        probe: () => _palm.detect(probe, imageWidth: 64, imageHeight: 64),
+      );
     }
   }
 

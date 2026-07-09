@@ -82,7 +82,7 @@ class HandDetectorCore {
     required int maxDetections,
     required double minLandmarkScore,
     required double detectorConf,
-    double palmNmsIou = 0.45,
+    double palmNmsIou = 0.3,
     double palmRoiScale = 2.6,
     bool enableTracking = false,
     TrackingConfig trackingConfig = const TrackingConfig(),

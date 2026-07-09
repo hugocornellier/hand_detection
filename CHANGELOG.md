@@ -1,3 +1,31 @@
+## 3.4.0
+
+* Palm detection defaults now match MediaPipe upstream: `detectorConf` 0.45 to
+  0.5, `palmNmsIou` 0.45 to 0.3, applied consistently across native, isolate,
+  and web paths. The looser NMS threshold let overlapping candidates of a
+  single hand survive weighted suppression and surface as duplicate "ghost"
+  hands in live camera feeds; suppressing at 0.3 merges them the way
+  MediaPipe's own palm graph does. Both remain per-call parameters on
+  `HandDetector.create` / `initialize` / `initializeFromBuffers`, so callers
+  that pass explicit values are unaffected.
+* Web: the `auto` accelerator now resolves through flutter_litert's capability
+  probe (`resolveWebAccelerator`): WebGPU is selected only on Chromium with a
+  real hardware adapter, and everything else starts on WASM. Fixes Firefox,
+  whose WebGPU compiles and runs cleanly but far slower than WASM SIMD, so the
+  error-driven fallback could never catch it.
+* Web: all three runners (palm, hand landmark, gesture embedder/classifier)
+  report the backend LiteRT.js actually compiled on instead of the requested
+  one, and silent compile-time fallbacks are logged. After an `auto` init lands
+  on WebGPU, a timed warmup on the palm stage
+  (`WebGpuFallback.maybeSwapIfWebGpuSlow`) swaps all runners to WASM when the
+  median run exceeds the budget.
+* Web: Safari initializes again; flutter_litert now serves LiteRT.js from its
+  wasm directory default, so Safari receives the compat build instead of
+  failing to parse the relaxed-SIMD build.
+* Depends on flutter_litert 3.4.1 (SwiftPM App Store fix, ARM64-deterministic
+  detection decode, and the web `CompiledModel` WebGPU compile watchdog: a
+  compile attempt that never settles falls back to WASM instead of hanging).
+
 ## 3.3.0
 
 * Add MediaPipe-style detection + tracking: pass `enableTracking: true` to `HandDetector.create` / `initialize` / `initializeFromBuffers`. Each detected hand is followed frame-to-frame via a rotated region of interest derived from its own landmarks (wrist to middle-finger-MCP orientation, tight landmark box expanded 2x), and the palm detector only runs to acquire new hands or re-acquire lost ones. This removes the per-frame palm re-detection drop-outs on video and live camera (a sample origami clip went from 90% to 100% of frames with a hand at the same 0.5 thresholds). Off by default; existing behavior is unchanged.

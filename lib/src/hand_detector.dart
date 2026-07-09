@@ -128,8 +128,8 @@ class HandDetector {
   static Future<HandDetector> create({
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
-    double detectorConf = 0.45,
-    double palmNmsIou = 0.45,
+    double detectorConf = 0.5,
+    double palmNmsIou = 0.3,
     double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
@@ -189,9 +189,9 @@ class HandDetector {
   /// Parameters:
   /// - [mode]: Detection mode (boxes only or boxes + landmarks). Default: [HandMode.boxesAndLandmarks]
   /// - [landmarkModel]: Hand landmark model variant. Default: [HandLandmarkModel.full]
-  /// - [detectorConf]: Palm detection confidence threshold (0.0-1.0). Default: 0.45
+  /// - [detectorConf]: Palm detection confidence threshold (0.0-1.0). Default: 0.5
   /// - [palmNmsIou]: IoU threshold for palm non-maximum suppression (0.0-1.0).
-  ///   Higher keeps more overlapping detections; lower merges them harder. Default: 0.45
+  ///   Higher keeps more overlapping detections; lower merges them harder. Default: 0.3
   /// - [palmRoiScale]: Expansion factor for the palm ROI fed to the landmark
   ///   model. Larger includes more context around the palm. Default: 2.6
   /// - [maxDetections]: Maximum number of hands to detect. Default: 10
@@ -217,8 +217,8 @@ class HandDetector {
   Future<void> initialize({
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
-    double detectorConf = 0.45,
-    double palmNmsIou = 0.45,
+    double detectorConf = 0.5,
+    double palmNmsIou = 0.3,
     double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,
@@ -311,8 +311,8 @@ class HandDetector {
   /// - [gestureClassifierBytes]: Raw bytes of the gesture classifier model (optional; required for gesture recognition)
   /// - [mode]: Detection mode. Default: [HandMode.boxesAndLandmarks]
   /// - [landmarkModel]: Hand landmark model variant. Default: [HandLandmarkModel.full]
-  /// - [detectorConf]: Palm detection confidence threshold. Default: 0.45
-  /// - [palmNmsIou]: IoU threshold for palm non-maximum suppression. Default: 0.45
+  /// - [detectorConf]: Palm detection confidence threshold. Default: 0.5
+  /// - [palmNmsIou]: IoU threshold for palm non-maximum suppression. Default: 0.3
   /// - [palmRoiScale]: Expansion factor for the palm ROI fed to the landmark model. Default: 2.6
   /// - [trackingConfig]: ROI tuning used when [enableTracking] is true. Default: [TrackingConfig]
   /// - [maxDetections]: Maximum number of hands to detect. Default: 10
@@ -329,8 +329,8 @@ class HandDetector {
     Uint8List? gestureClassifierBytes,
     HandMode mode = HandMode.boxesAndLandmarks,
     HandLandmarkModel landmarkModel = HandLandmarkModel.full,
-    double detectorConf = 0.45,
-    double palmNmsIou = 0.45,
+    double detectorConf = 0.5,
+    double palmNmsIou = 0.3,
     double palmRoiScale = 2.6,
     int maxDetections = 10,
     double minLandmarkScore = 0.5,

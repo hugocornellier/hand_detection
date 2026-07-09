@@ -352,8 +352,8 @@ final detector = HandDetector(
 final detector = await HandDetector.create(
   mode: HandMode.boxesAndLandmarks,       // Detection mode
   landmarkModel: HandLandmarkModel.full,  // Landmark model variant
-  detectorConf: 0.45,                     // Palm detection confidence (0.0-1.0)
-  palmNmsIou: 0.45,                       // Palm NMS IoU threshold (0.0-1.0)
+  detectorConf: 0.5,                      // Palm detection confidence (0.0-1.0)
+  palmNmsIou: 0.3,                        // Palm NMS IoU threshold (0.0-1.0)
   palmRoiScale: 2.6,                      // Palm ROI expansion fed to the landmark model
   maxDetections: 10,                      // Maximum hands to detect
   minLandmarkScore: 0.5,                  // Minimum landmark confidence (0.0-1.0)
@@ -372,8 +372,8 @@ These control the two model stages directly. The defaults match MediaPipe's ship
 
 | Option | Default | Effect |
 | --- | --- | --- |
-| `detectorConf` | 0.45 | Palm detector score threshold. Raise to reject low-confidence palms, lower to catch more hands. |
-| `palmNmsIou` | 0.45 | IoU threshold for palm non-maximum suppression. Higher keeps more overlapping detections; lower merges them harder. |
+| `detectorConf` | 0.5 | Palm detector score threshold. Raise to reject low-confidence palms, lower to catch more hands. |
+| `palmNmsIou` | 0.3 | IoU threshold for palm non-maximum suppression. Higher keeps more overlapping detections; lower merges them harder. |
 | `palmRoiScale` | 2.6 | How much the palm box is expanded before it is cropped for the landmark model. Larger includes more context around the palm (can help large/rotated hands); smaller crops tighter. |
 | `minLandmarkScore` | 0.5 | Landmark-stage confidence gate. Hands whose landmark score falls below this are dropped. |
 | `maxDetections` | 10 | Maximum number of hands returned per frame. |

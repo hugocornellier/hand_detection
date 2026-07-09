@@ -9,6 +9,8 @@ import 'package:flutter_litert/flutter_litert.dart'
     show computeLetterboxParams, rgbaToRgbFloat32;
 import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
     show LiteRtInterpreter;
+import 'package:flutter_litert/src/web/web_detector_utils.dart'
+    show resolveWebAccelerator, logCompileFallback;
 import 'package:web/web.dart' as web;
 
 import '../../shared/hand_geometry.dart';
@@ -46,8 +48,8 @@ class PalmDetectorWeb {
   bool _initialized = false;
 
   PalmDetectorWeb({
-    this.scoreThreshold = 0.45,
-    this.nmsIouThreshold = 0.45,
+    this.scoreThreshold = 0.5,
+    this.nmsIouThreshold = 0.3,
     this.roiScale = 2.6,
   });
 
@@ -63,11 +65,15 @@ class PalmDetectorWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved =
-        liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
+    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
     _liteRtItp =
         await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved);
-    _activeAccelerator = resolved;
+    _activeAccelerator = _liteRtItp!.activeAccelerator;
+    logCompileFallback(
+      model: 'PalmDetector',
+      requested: resolved,
+      actual: _activeAccelerator!,
+    );
 
     final inT = _liteRtItp!.getInputTensor(0);
     _inH = inT.shape[1];

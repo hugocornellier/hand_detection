@@ -1286,7 +1286,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     return HandDetector.create(
       mode: HandMode.boxesAndLandmarks,
       landmarkModel: HandLandmarkModel.full,
-      detectorConf: 0.6,
+      // Explicit for visibility; these match the library defaults (as of
+      // 3.4.0), which follow MediaPipe: 0.5 detection floor, 0.3 palm NMS.
+      detectorConf: 0.5,
+      palmNmsIou: 0.3,
       maxDetections: _maxHands,
       minLandmarkScore: 0.5,
       enableTracking: _enableTracking,

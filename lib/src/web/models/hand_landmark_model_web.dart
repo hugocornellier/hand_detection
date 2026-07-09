@@ -8,6 +8,8 @@ import 'package:flutter_litert/flutter_litert.dart'
     show rgbaToRgbFloat32, sigmoidClipped;
 import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
     show LiteRtInterpreter;
+import 'package:flutter_litert/src/web/web_detector_utils.dart'
+    show resolveWebAccelerator, logCompileFallback;
 import 'package:web/web.dart' as web;
 
 /// Web hand landmark runner (Stage 2). Mirrors native [HandLandmarkModelRunner]
@@ -49,11 +51,15 @@ class HandLandmarkModelWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved =
-        liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
+    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
     _liteRtItp =
         await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved);
-    _activeAccelerator = resolved;
+    _activeAccelerator = _liteRtItp!.activeAccelerator;
+    logCompileFallback(
+      model: 'HandLandmark',
+      requested: resolved,
+      actual: _activeAccelerator!,
+    );
 
     final inT = _liteRtItp!.getInputTensor(0);
     _inH = inT.shape[1];
