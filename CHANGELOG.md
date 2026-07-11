@@ -1,3 +1,7 @@
+## 3.4.1
+
+* Update flutter_litert -> 3.5.0
+
 ## 3.4.0
 
 * Palm detection defaults now match MediaPipe upstream: `detectorConf` 0.45 to
