@@ -1,3 +1,7 @@
+## 3.4.3
+
+* Update flutter_litert -> 3.5.1.
+
 ## 3.4.2
 
 * Fix hand-landmark presence confidence on native and web. The bundled model
