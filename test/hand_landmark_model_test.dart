@@ -186,6 +186,24 @@ void main() {
       }
     });
 
+    test('blank crop stays below the default hand-presence threshold',
+        () async {
+      final mat = cv.Mat.zeros(224, 224, cv.MatType.CV_8UC3);
+
+      try {
+        final result = await runner.run(mat);
+        expect(
+          result.score,
+          lessThan(0.5),
+          reason: 'The model output is already logistic. Applying sigmoid a '
+              'second time maps a non-hand score near zero to 0.5 and defeats '
+              'the default minLandmarkScore gate.',
+        );
+      } finally {
+        mat.dispose();
+      }
+    });
+
     test('run returns handedness', () async {
       final mat = cv.Mat.zeros(224, 224, cv.MatType.CV_8UC3);
 

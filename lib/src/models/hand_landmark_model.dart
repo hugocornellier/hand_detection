@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/native.dart';
+import '../shared/hand_score.dart';
 import '../util/image_utils.dart';
 import '../types.dart';
 
@@ -395,7 +396,7 @@ class HandLandmarkModelRunner {
   /// The model outputs (read from flat Float32List buffers):
   /// - landmarks: [1, 63] - 21 points × 3 (x, y, z) in 224x224 space
   /// - worldLandmarks: [1, 63] - 21 world-space points × 3 (x, y, z)
-  /// - score: [1, 1] - hand confidence (0-1 after sigmoid)
+  /// - score: [1, 1] - hand confidence (already logistic, 0-1)
   /// - handedness: [1, 1] - 0=left, 1=right
   ///
   /// Transforms landmarks from 224x224 padded space to original crop pixel space
@@ -415,7 +416,7 @@ class HandLandmarkModelRunner {
     required int cropWidth,
     required int cropHeight,
   }) {
-    final score = sigmoidClipped(scoreData[0]);
+    final score = decodeHandPresenceProbability(scoreData[0]);
     final handedness =
         handednessData[0] > 0.5 ? Handedness.right : Handedness.left;
 

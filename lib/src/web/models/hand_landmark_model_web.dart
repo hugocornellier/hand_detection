@@ -4,13 +4,14 @@ import 'dart:js_interop';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_litert/flutter_litert.dart'
-    show rgbaToRgbFloat32, sigmoidClipped;
+import 'package:flutter_litert/flutter_litert.dart' show rgbaToRgbFloat32;
 import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
     show LiteRtInterpreter;
 import 'package:flutter_litert/src/web/web_detector_utils.dart'
     show resolveWebAccelerator, logCompileFallback;
 import 'package:web/web.dart' as web;
+
+import '../../shared/hand_score.dart';
 
 /// Web hand landmark runner (Stage 2). Mirrors native [HandLandmarkModelRunner]
 /// but extracts the rotation-aware hand crop with a Canvas transform (the
@@ -165,7 +166,7 @@ class HandLandmarkModelWeb {
     return (
       landmarks: Float32List.fromList(_lmOut!),
       world: Float32List.fromList(_worldOut!),
-      score: sigmoidClipped(_scoreOut![0]),
+      score: decodeHandPresenceProbability(_scoreOut![0]),
       handedness: _handOut![0],
     );
   }

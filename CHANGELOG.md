@@ -1,3 +1,12 @@
+## 3.4.2
+
+* Fix hand-landmark presence confidence on native and web. The bundled model
+  already emits a logistic probability, but the package applied sigmoid a
+  second time, compressing scores into 0.5-0.731 and allowing non-hand palm
+  proposals to pass the default `minLandmarkScore: 0.5` gate. Presence scores
+  now preserve the model's 0-1 output, restoring landmark-stage rejection of
+  false-positive palms.
+
 ## 3.4.1
 
 * Update flutter_litert -> 3.5.0
