@@ -12,7 +12,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_detection/hand_detection_native.dart';
 import 'package:flutter_litert/flutter_litert.dart'
-    show FrameThrottle, OneEuroFilter;
+    show FrameThrottle, iouLTRB, OneEuroFilter;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path_provider/path_provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -2997,20 +2997,16 @@ class HandSmoother {
 
   double _iou(Hand a, _HandTrack b) {
     final box = a.boundingBox;
-    final l = math.max(box.left, b.lastLeft);
-    final t = math.max(box.top, b.lastTop);
-    final r = math.min(box.right, b.lastRight);
-    final bo = math.min(box.bottom, b.lastBottom);
-    final iw = math.max(0.0, r - l);
-    final ih = math.max(0.0, bo - t);
-    final inter = iw * ih;
-    final aa = math.max(0.0, box.right - box.left) *
-        math.max(0.0, box.bottom - box.top);
-    final bb = math.max(0.0, b.lastRight - b.lastLeft) *
-        math.max(0.0, b.lastBottom - b.lastTop);
-    final union = aa + bb - inter;
-    if (union <= 0) return 0;
-    return inter / union;
+    return iouLTRB(
+      box.left,
+      box.top,
+      box.right,
+      box.bottom,
+      b.lastLeft,
+      b.lastTop,
+      b.lastRight,
+      b.lastBottom,
+    );
   }
 }
 

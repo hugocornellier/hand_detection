@@ -1,3 +1,23 @@
+## 3.5.0
+
+* Fix (web): `activeAccelerator` chained the model runners with `??`, but every
+  runner reports a non-null backend once initialized, so the chain always
+  short-circuited on the palm detector and ignored the landmark and gesture
+  runners. Runners compile independently and can fall back from WebGPU to WASM
+  on their own, so when the palm model is the one that falls back the aggregate
+  reported `wasm` while another runner was still on the GPU. Both the runtime
+  GPU-error fallback and the slow-WebGPU warmup are gated on that value, so
+  neither would fire for the runner still on WebGPU. Now uses
+  `aggregateActiveAccelerator` from `flutter_litert`, which reports `webgpu` if
+  any runner is on it.
+* Adopt the shared `flutter_litert` 3.6.0 helpers in place of local copies:
+  `compiledModelFromBufferAuto` for the `{gpu, cpu}` accelerator branch at all
+  three CompiledModel call sites, and `iouLTRB` for track matching in the
+  example.
+* Update flutter_litert -> 3.6.0.
+* Expand the README live camera section with the full production pipeline
+  (frame throttling, orientation handling, cover-fit overlay mapping).
+
 ## 3.4.3
 
 * Update flutter_litert -> 3.5.1.

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/native.dart';
 import '../shared/hand_score.dart';
@@ -153,12 +152,8 @@ class HandLandmarkModelRunner {
     _compiledPool.initialize(
       poolSize: poolSize,
       inputFloats: inputSize * inputSize * 3,
-      create: () =>
-          setEquals(accelerators, const {Accelerator.gpu, Accelerator.cpu})
-              ? CompiledModel.fromBufferWithGpuFallback(modelBytes,
-                  precision: precision)
-              : CompiledModel.fromBuffer(modelBytes,
-                  accelerators: accelerators, precision: precision),
+      create: () => compiledModelFromBufferAuto(modelBytes,
+          accelerators: accelerators, precision: precision),
       onFirstModel: _setupCompiled,
     );
     _isInitialized = true;

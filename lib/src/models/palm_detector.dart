@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:meta/meta.dart';
 import 'package:flutter_litert/native.dart';
@@ -135,12 +134,8 @@ class PalmDetector {
     Precision precision = Precision.fp16,
   }) async {
     if (_isInitialized) await dispose();
-    final compiled =
-        setEquals(accelerators, const {Accelerator.gpu, Accelerator.cpu})
-            ? CompiledModel.fromBufferWithGpuFallback(modelBytes,
-                precision: precision)
-            : CompiledModel.fromBuffer(modelBytes,
-                accelerators: accelerators, precision: precision);
+    final compiled = compiledModelFromBufferAuto(modelBytes,
+        accelerators: accelerators, precision: precision);
     try {
       _setupCompiled(compiled);
     } catch (_) {

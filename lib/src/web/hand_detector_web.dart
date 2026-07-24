@@ -6,7 +6,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_litert/flutter_litert.dart'
-    show BoundingBox, PerformanceConfig;
+    show aggregateActiveAccelerator, BoundingBox, PerformanceConfig;
 import 'package:flutter_litert/src/web/web_detector_utils.dart'
     show decodeBitmap, WebGpuFallback;
 import 'package:web/web.dart' as web;
@@ -85,11 +85,16 @@ class HandDetector with WebGpuFallback {
 
   /// Active accelerator (`'webgpu'` / `'wasm'`) across the runners, or null
   /// pre-init. May change at runtime if a GPU error triggers a WASM swap.
+  ///
+  /// Reports `'webgpu'` when any runner is still on WebGPU so runtime fallback
+  /// and the slow-WebGPU warmup stay enabled under mixed compile outcomes; see
+  /// [aggregateActiveAccelerator].
   @override
-  String? get activeAccelerator =>
-      _palm.activeAccelerator ??
-      _landmark.activeAccelerator ??
-      _gesture?.activeAccelerator;
+  String? get activeAccelerator => aggregateActiveAccelerator(<String?>[
+        _palm.activeAccelerator,
+        _landmark.activeAccelerator,
+        _gesture?.activeAccelerator,
+      ]);
 
   Future<void> initialize({
     HandMode mode = HandMode.boxesAndLandmarks,

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_litert/native.dart';
 import '../types.dart';
 
@@ -127,10 +126,8 @@ class GestureRecognizer {
   }) async {
     if (_isInitialized) await dispose();
 
-    CompiledModel buildModel(Uint8List bytes) => setEquals(
-            accelerators, const {Accelerator.gpu, Accelerator.cpu})
-        ? CompiledModel.fromBufferWithGpuFallback(bytes, precision: precision)
-        : CompiledModel.fromBuffer(bytes,
+    CompiledModel buildModel(Uint8List bytes) =>
+        compiledModelFromBufferAuto(bytes,
             accelerators: accelerators, precision: precision);
 
     final embedder = buildModel(embedderBytes);
