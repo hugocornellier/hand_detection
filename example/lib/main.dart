@@ -1415,11 +1415,17 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
               TextButton(
                 onPressed: _isInitialized ? _toggleAccelerator : null,
                 style: TextButton.styleFrom(
-                  minimumSize: const Size(48, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  // Fixed width so swapping labels does not shift the row.
+                  minimumSize: const Size(92, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                 ),
                 child: Text(
-                  _useCompiledModel ? 'CM' : 'XNN',
+                  // Names the flutter_litert engine class, not a delegate:
+                  // the interpreter path uses XNNPACK on desktop/Android but
+                  // Metal on iOS, so an 'XNN' label is wrong there.
+                  _useCompiledModel ? 'CM' : 'Interpreter',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.amberAccent,
                     fontWeight: FontWeight.bold,
@@ -2453,7 +2459,11 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
             onPressed:
                 _isInitialized && !_isProcessing ? _toggleAccelerator : null,
             child: Text(
-              _useCompiledModel ? 'CM' : 'XNN',
+              // See the live-camera badge: this names the engine, not a
+              // delegate, because the interpreter path is Metal on iOS.
+              _useCompiledModel ? 'CM' : 'Interpreter',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.amber,
                 fontWeight: FontWeight.bold,
