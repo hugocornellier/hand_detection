@@ -49,7 +49,6 @@
 ///
 /// **Main Classes:**
 /// - [HandDetector]: Main API for hand detection (runs inference in a background isolate)
-/// - [HandDetectorIsolate]: Deprecated, kept for backward compatibility; prefer [HandDetector]
 /// - [Hand]: Detected hand with bounding box, landmarks, handedness, and gesture
 /// - [HandLandmark]: Single keypoint with 3D coordinates (x, y, z) and visibility
 /// - [HandLandmarkType]: Enum of 21 hand landmarks (wrist, finger joints, tips)

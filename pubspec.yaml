@@ -1,6 +1,6 @@
 name: hand_detection
 description: Hand, gesture and landmark detection using on-device LiteRT (formerly TensorFlow Lite) models
-version: 3.5.0
+version: 4.0.0
 
 repository: "https://github.com/hugocornellier/hand_detection"
 homepage: "https://github.com/hugocornellier/hand_detection"

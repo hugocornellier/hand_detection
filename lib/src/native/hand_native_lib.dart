@@ -17,7 +17,6 @@ export '../ui/hand_overlay.dart';
 
 // Native, isolate-backed detector and raw model result type.
 export '../hand_detector.dart' show HandDetector;
-export '../isolate/hand_detector_isolate.dart' show HandDetectorIsolate;
 export '../models/palm_detector.dart' show PalmDetection;
 export '../dart_registration.dart';
 

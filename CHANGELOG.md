@@ -1,3 +1,20 @@
+## 4.0.0
+
+**Breaking:** removes `HandDetectorIsolate`, deprecated since 3.0.0.
+
+* Remove `HandDetectorIsolate`. `HandDetector` is the single unified class and
+  has run all inference in a background isolate since 3.0.0, so the wrapper only
+  forwarded calls. Migration is mechanical:
+  * `HandDetectorIsolate.spawn(...)` becomes `HandDetector()` plus
+    `await detector.initialize(...)`, which takes the same named arguments.
+  * `detectHands(bytes)` becomes `detect(bytes)`. It takes a `Uint8List` rather
+    than a `List<int>`; wrap with `Uint8List.fromList` if needed.
+  * `detectHandsFromMat` becomes `detectFromMat`.
+  * `detectHandsFromMatBytes` becomes `detectFromMatBytes`.
+  * `isReady` and `dispose()` are unchanged.
+  * `HandDetector` also exposes APIs the wrapper never surfaced, including
+    `detectFromCameraFrame` and `initializeFromBuffers`.
+
 ## 3.5.0
 
 * Fix (web): `activeAccelerator` chained the model runners with `??`, but every

@@ -90,7 +90,7 @@ class GestureRecognizer {
 
   /// Initializes the gesture recognizer from pre-loaded model bytes.
   ///
-  /// Used by [HandDetectorIsolate] to initialize within a background isolate
+  /// Used by `HandDetectorCore` to initialize within a background isolate
   /// where Flutter asset loading is not available. Passes
   /// `useIsolateInterpreter: false` to skip the nested IsolateInterpreters
   /// that would otherwise add a per-inference message hop on each pool while

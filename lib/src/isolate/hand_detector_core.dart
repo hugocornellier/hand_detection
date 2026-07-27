@@ -36,7 +36,7 @@ class _HandCropData {
 ///
 /// Holds all TFLite models and runs the full hand detection pipeline on the
 /// calling thread. Created inside [HandDetector]'s background isolate by
-/// [HandDetector._isolateEntry].
+/// `HandDetector._detectionIsolateEntry`.
 ///
 /// This class is an internal implementation detail of hand_detection and is
 /// not part of the public API.
