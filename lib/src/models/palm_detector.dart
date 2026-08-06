@@ -131,7 +131,7 @@ class PalmDetector {
   Future<void> initializeCompiledFromBuffer(
     Uint8List modelBytes, {
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     if (_isInitialized) await dispose();
     final compiled = compiledModelFromBufferAuto(modelBytes,

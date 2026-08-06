@@ -122,7 +122,7 @@ class GestureRecognizer {
     required Uint8List embedderBytes,
     required Uint8List classifierBytes,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     if (_isInitialized) await dispose();
 

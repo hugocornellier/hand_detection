@@ -142,7 +142,7 @@ class HandDetector {
     bool useCompiledModel = false,
     String liteRtAccelerator = 'auto',
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     final detector = HandDetector();
     await detector.initialize(
@@ -233,7 +233,7 @@ class HandDetector {
     // and ignored on native, which selects its engine via useCompiledModel.
     String liteRtAccelerator = 'auto',
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     if (isReady) {
       throw StateError('HandDetector already initialized');
@@ -342,7 +342,7 @@ class HandDetector {
     double gestureMinConfidence = 0.5,
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     if (isReady) {
       throw StateError('HandDetector already initialized');
