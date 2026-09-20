@@ -3,6 +3,11 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - third_party/**
+    - build/**
+    - android/**
+    - ios/**
+    - windows/**
+    - linux/**
 
 linter:
   rules:
