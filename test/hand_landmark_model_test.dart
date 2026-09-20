@@ -48,10 +48,7 @@ void main() {
       final mat = cv.Mat.zeros(224, 224, cv.MatType.CV_8UC3);
 
       try {
-        expect(
-          () => runner.run(mat),
-          throwsA(isA<StateError>()),
-        );
+        expect(() => runner.run(mat), throwsA(isA<StateError>()));
       } finally {
         mat.dispose();
       }
@@ -186,8 +183,7 @@ void main() {
       }
     });
 
-    test('blank crop stays below the default hand-presence threshold',
-        () async {
+    test('blank crop stays below the default hand-presence threshold', () async {
       final mat = cv.Mat.zeros(224, 224, cv.MatType.CV_8UC3);
 
       try {
@@ -195,7 +191,8 @@ void main() {
         expect(
           result.score,
           lessThan(0.5),
-          reason: 'The model output is already logistic. Applying sigmoid a '
+          reason:
+              'The model output is already logistic. Applying sigmoid a '
               'second time maps a non-hand score near zero to 0.5 and defeats '
               'the default minLandmarkScore gate.',
         );
@@ -210,10 +207,7 @@ void main() {
       try {
         final result = await runner.run(mat);
         expect(result.handedness, isNotNull);
-        expect(
-          result.handedness,
-          anyOf(Handedness.left, Handedness.right),
-        );
+        expect(result.handedness, anyOf(Handedness.left, Handedness.right));
       } finally {
         mat.dispose();
       }

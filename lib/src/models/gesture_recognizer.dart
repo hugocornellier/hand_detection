@@ -126,9 +126,11 @@ class GestureRecognizer {
   }) async {
     if (_isInitialized) await dispose();
 
-    CompiledModel buildModel(Uint8List bytes) =>
-        compiledModelFromBufferAuto(bytes,
-            accelerators: accelerators, precision: precision);
+    CompiledModel buildModel(Uint8List bytes) => compiledModelFromBufferAuto(
+      bytes,
+      accelerators: accelerators,
+      precision: precision,
+    );
 
     final embedder = buildModel(embedderBytes);
     CompiledModel? classifier;
@@ -257,7 +259,8 @@ class GestureRecognizer {
   }) async {
     if (!_isInitialized) {
       throw StateError(
-          'GestureRecognizer not initialized. Call initialize() first.');
+        'GestureRecognizer not initialized. Call initialize() first.',
+      );
     }
 
     if (landmarks.length != 21 || worldLandmarks.length != 21) {
@@ -285,11 +288,14 @@ class GestureRecognizer {
     if (embedder != null) {
       // CompiledModel (LiteRT Next) path: embed the landmark vectors, then
       // classify the embedding. runAsync returns fresh Float32List outputs.
-      final embOut = await embedder.runAsync(
-        <Float32List>[_handInput, _handednessInput, _worldHandInput],
-      );
-      final clsOut =
-          await _classifierCompiled!.runAsync(<Float32List>[embOut[0]]);
+      final embOut = await embedder.runAsync(<Float32List>[
+        _handInput,
+        _handednessInput,
+        _worldHandInput,
+      ]);
+      final clsOut = await _classifierCompiled!.runAsync(<Float32List>[
+        embOut[0],
+      ]);
       probs = clsOut[0];
     } else {
       final embedderInputs = <Object>[

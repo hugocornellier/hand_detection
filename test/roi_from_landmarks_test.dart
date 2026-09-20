@@ -32,14 +32,13 @@ PalmDetection _palm(
   double size, {
   double score = 1.0,
   double rotation = 0.0,
-}) =>
-    PalmDetection(
-      sqnRrSize: size,
-      rotation: rotation,
-      sqnRrCenterX: cx,
-      sqnRrCenterY: cy,
-      score: score,
-    );
+}) => PalmDetection(
+  sqnRrSize: size,
+  rotation: rotation,
+  sqnRrCenterX: cx,
+  sqnRrCenterY: cy,
+  score: score,
+);
 
 void main() {
   group('roiFromHandLandmarks', () {
@@ -60,7 +59,7 @@ void main() {
           13: 140,
           4: -9999,
           8: 9999,
-          20: 7777
+          20: 7777,
         },
       );
 
@@ -96,7 +95,7 @@ void main() {
           13: 160,
           4: 9999,
           8: -9999,
-          20: 5000
+          20: 5000,
         },
         yOverrides: {1: 90, 17: 110, 4: -9999, 8: 9999, 20: 7777},
       );
@@ -122,17 +121,17 @@ void main() {
     test('default shiftY (-0.1) nudges the ROI toward the fingertips', () {
       // Same upright hand as the first test (box height 60).
       List<double> mkXs() => buildLandmarks(
-            fillX: 100,
-            fillY: 170,
-            xOverrides: {1: 80, 17: 120},
-            yOverrides: {0: 200, 5: 140, 9: 140, 13: 140},
-          ).$1;
+        fillX: 100,
+        fillY: 170,
+        xOverrides: {1: 80, 17: 120},
+        yOverrides: {0: 200, 5: 140, 9: 140, 13: 140},
+      ).$1;
       List<double> mkYs() => buildLandmarks(
-            fillX: 100,
-            fillY: 170,
-            xOverrides: {1: 80, 17: 120},
-            yOverrides: {0: 200, 5: 140, 9: 140, 13: 140},
-          ).$2;
+        fillX: 100,
+        fillY: 170,
+        xOverrides: {1: 80, 17: 120},
+        yOverrides: {0: 200, 5: 140, 9: 140, 13: 140},
+      ).$2;
 
       final baseline = roiFromHandLandmarks(
         xs: mkXs(),
@@ -261,8 +260,12 @@ void main() {
       // IoU(palm, tracked) ~0.9 > 0.5: the palm is dropped, tracked kept.
       final palm = _palm(0.5, 0.5, 0.4, score: 0.9);
       final tracked = _palm(0.52, 0.5, 0.4, score: 0.5);
-      final out =
-          associateRois([palm], [tracked], imageWidth: 100, imageHeight: 100);
+      final out = associateRois(
+        [palm],
+        [tracked],
+        imageWidth: 100,
+        imageHeight: 100,
+      );
       expect(out.length, 1);
       expect(out.single.score, 0.5); // the tracked ROI
       expect(out.single.sqnRrCenterX, 0.52);
@@ -271,8 +274,12 @@ void main() {
     test('non-overlapping palm and tracked ROIs are both kept', () {
       final palm = _palm(0.2, 0.2, 0.2);
       final tracked = _palm(0.8, 0.8, 0.2);
-      final out =
-          associateRois([palm], [tracked], imageWidth: 100, imageHeight: 100);
+      final out = associateRois(
+        [palm],
+        [tracked],
+        imageWidth: 100,
+        imageHeight: 100,
+      );
       expect(out.length, 2);
     });
 
@@ -281,8 +288,12 @@ void main() {
       // two tracked ROIs that drift together collapse to the later one.
       final t1 = _palm(0.5, 0.5, 0.4, score: 1);
       final t2 = _palm(0.52, 0.5, 0.4, score: 2);
-      final out =
-          associateRois(const [], [t1, t2], imageWidth: 100, imageHeight: 100);
+      final out = associateRois(
+        const [],
+        [t1, t2],
+        imageWidth: 100,
+        imageHeight: 100,
+      );
       expect(out.length, 1);
       expect(out.single.score, 2); // later element wins
     });

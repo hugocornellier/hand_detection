@@ -45,8 +45,9 @@ void main() {
         expect(detector.isReady, isTrue);
 
         // Run one detect on a real sample image and assert no exception.
-        final ByteData data = await rootBundle
-            .load('assets/samples/istockphoto-462908027-612x612.jpg');
+        final ByteData data = await rootBundle.load(
+          'assets/samples/istockphoto-462908027-612x612.jpg',
+        );
         final bytes = data.buffer.asUint8List();
 
         final List<Hand> results = await detector.detect(bytes);
@@ -68,7 +69,7 @@ void main() {
         const accelerators = {
           Accelerator.cpu,
           Accelerator.gpu,
-          Accelerator.npu
+          Accelerator.npu,
         };
         const precisions = [Precision.fp16, Precision.fp32];
 

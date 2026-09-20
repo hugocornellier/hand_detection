@@ -36,8 +36,9 @@ void main() {
   bool compiledAvailable() {
     if (cmAvail != null) return cmAvail!;
     try {
-      final m =
-          CompiledModel.fromBufferWithGpuFallback(loadBytes(palmModelPath));
+      final m = CompiledModel.fromBufferWithGpuFallback(
+        loadBytes(palmModelPath),
+      );
       m.close();
       cmAvail = true;
     } catch (_) {
@@ -112,41 +113,43 @@ void main() {
       }
     });
 
-    test('compiled pipeline runs gesture recognition (embedder + classifier)',
-        () async {
-      if (!compiledAvailable()) {
-        markTestSkipped('LiteRT CompiledModel runtime unavailable on host');
-        return;
-      }
-      final mat = cv.imdecode(loadBytes(imagePath), cv.IMREAD_COLOR);
+    test(
+      'compiled pipeline runs gesture recognition (embedder + classifier)',
+      () async {
+        if (!compiledAvailable()) {
+          markTestSkipped('LiteRT CompiledModel runtime unavailable on host');
+          return;
+        }
+        final mat = cv.imdecode(loadBytes(imagePath), cv.IMREAD_COLOR);
 
-      final core = HandDetectorCore();
-      await core.initializeFromBuffers(
-        palmDetectionBytes: loadBytes(palmModelPath),
-        handLandmarkBytes: loadBytes(landmarkModelPath),
-        gestureEmbedderBytes: loadBytes(embedderModelPath),
-        gestureClassifierBytes: loadBytes(classifierModelPath),
-        mode: HandMode.boxesAndLandmarks,
-        maxDetections: 10,
-        minLandmarkScore: 0.5,
-        detectorConf: 0.45,
-        interpreterPoolSize: 1,
-        performanceConfig: const PerformanceConfig(),
-        enableGestures: true,
-        gestureMinConfidence: 0.0,
-        useCompiledModel: true,
-      );
-      final hands = await core.detectDirect(mat);
-      await core.dispose();
-      mat.dispose();
+        final core = HandDetectorCore();
+        await core.initializeFromBuffers(
+          palmDetectionBytes: loadBytes(palmModelPath),
+          handLandmarkBytes: loadBytes(landmarkModelPath),
+          gestureEmbedderBytes: loadBytes(embedderModelPath),
+          gestureClassifierBytes: loadBytes(classifierModelPath),
+          mode: HandMode.boxesAndLandmarks,
+          maxDetections: 10,
+          minLandmarkScore: 0.5,
+          detectorConf: 0.45,
+          interpreterPoolSize: 1,
+          performanceConfig: const PerformanceConfig(),
+          enableGestures: true,
+          gestureMinConfidence: 0.0,
+          useCompiledModel: true,
+        );
+        final hands = await core.detectDirect(mat);
+        await core.dispose();
+        mat.dispose();
 
-      // With gestures enabled and a 0.0 threshold, every detected hand should
-      // carry a gesture result produced by the compiled embedder + classifier.
-      expect(hands, isNotEmpty);
-      for (final h in hands) {
-        expect(h.gesture, isNotNull);
-        expect(h.gesture!.confidence, inInclusiveRange(0.0, 1.0));
-      }
-    });
+        // With gestures enabled and a 0.0 threshold, every detected hand should
+        // carry a gesture result produced by the compiled embedder + classifier.
+        expect(hands, isNotEmpty);
+        for (final h in hands) {
+          expect(h.gesture, isNotNull);
+          expect(h.gesture!.confidence, inInclusiveRange(0.0, 1.0));
+        }
+      },
+    );
   });
 }

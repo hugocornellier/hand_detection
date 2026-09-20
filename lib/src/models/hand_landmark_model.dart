@@ -81,7 +81,7 @@ class HandLandmarkModelRunner {
 
   /// Creates a landmark model runner with the specified pool size.
   HandLandmarkModelRunner({int poolSize = 1})
-      : _pool = InterpreterPool(poolSize: poolSize);
+    : _pool = InterpreterPool(poolSize: poolSize);
 
   /// Initializes the hand landmark model.
   ///
@@ -90,9 +90,7 @@ class HandLandmarkModelRunner {
   ///
   /// Parameters:
   /// - [performanceConfig]: Optional performance configuration for TFLite delegates.
-  Future<void> initialize({
-    PerformanceConfig? performanceConfig,
-  }) async {
+  Future<void> initialize({PerformanceConfig? performanceConfig}) async {
     if (_isInitialized) await dispose();
 
     final String path =
@@ -126,8 +124,10 @@ class HandLandmarkModelRunner {
       performanceConfig: performanceConfig,
       useIsolateInterpreter: false,
       loader: (options) async {
-        final interpreter =
-            Interpreter.fromBuffer(modelBytes, options: options);
+        final interpreter = Interpreter.fromBuffer(
+          modelBytes,
+          options: options,
+        );
         interpreter.resizeInputTensor(0, [1, inputSize, inputSize, 3]);
         interpreter.allocateTensors();
         return interpreter;
@@ -152,8 +152,11 @@ class HandLandmarkModelRunner {
     _compiledPool.initialize(
       poolSize: poolSize,
       inputFloats: inputSize * inputSize * 3,
-      create: () => compiledModelFromBufferAuto(modelBytes,
-          accelerators: accelerators, precision: precision),
+      create: () => compiledModelFromBufferAuto(
+        modelBytes,
+        accelerators: accelerators,
+        precision: precision,
+      ),
       onFirstModel: _setupCompiled,
     );
     _isInitialized = true;
@@ -173,8 +176,10 @@ class HandLandmarkModelRunner {
         '${compiled.outputCount}.',
       );
     }
-    final List<int> outs =
-        compiledOutputFloatCounts(compiled, label: 'hand landmark');
+    final List<int> outs = compiledOutputFloatCounts(
+      compiled,
+      label: 'hand landmark',
+    );
     const int lmFloats = numHandLandmarks * 3;
     if (outs[_cmLmIdx] != lmFloats ||
         outs[_cmWorldIdx] != lmFloats ||
@@ -243,7 +248,8 @@ class HandLandmarkModelRunner {
   Future<HandLandmarks> run(cv.Mat roiImage) async {
     if (!_isInitialized) {
       throw StateError(
-          'HandLandmarkModelRunner not initialized. Call initialize() first.');
+        'HandLandmarkModelRunner not initialized. Call initialize() first.',
+      );
     }
 
     if (_compiledPool.isInitialized) {
@@ -353,7 +359,8 @@ class HandLandmarkModelRunner {
     double halfPadW,
     double halfPadH,
     bool ownsWork,
-  }) _prepareInput(cv.Mat roiImage) {
+  })
+  _prepareInput(cv.Mat roiImage) {
     if (roiImage.cols == inputSize && roiImage.rows == inputSize) {
       return (
         work: roiImage,
@@ -412,33 +419,42 @@ class HandLandmarkModelRunner {
     required int cropHeight,
   }) {
     final score = decodeHandPresenceProbability(scoreData[0]);
-    final handedness =
-        handednessData[0] > 0.5 ? Handedness.right : Handedness.left;
+    final handedness = handednessData[0] > 0.5
+        ? Handedness.right
+        : Handedness.left;
 
     final landmarks = <HandLandmark>[];
     for (int i = 0; i < numHandLandmarks; i++) {
       final base = i * 3;
-      landmarks.add(HandLandmark(
-        type: HandLandmarkType.values[i],
-        x: ((landmarksData[base] - halfPadW) / resizeScaleW)
-            .clamp(0.0, cropWidth.toDouble()),
-        y: ((landmarksData[base + 1] - halfPadH) / resizeScaleH)
-            .clamp(0.0, cropHeight.toDouble()),
-        z: landmarksData[base + 2],
-        visibility: score,
-      ));
+      landmarks.add(
+        HandLandmark(
+          type: HandLandmarkType.values[i],
+          x: ((landmarksData[base] - halfPadW) / resizeScaleW).clamp(
+            0.0,
+            cropWidth.toDouble(),
+          ),
+          y: ((landmarksData[base + 1] - halfPadH) / resizeScaleH).clamp(
+            0.0,
+            cropHeight.toDouble(),
+          ),
+          z: landmarksData[base + 2],
+          visibility: score,
+        ),
+      );
     }
 
     final worldLandmarks = <HandLandmark>[];
     for (int i = 0; i < numHandLandmarks; i++) {
       final base = i * 3;
-      worldLandmarks.add(HandLandmark(
-        type: HandLandmarkType.values[i],
-        x: worldLandmarksData[base],
-        y: worldLandmarksData[base + 1],
-        z: worldLandmarksData[base + 2],
-        visibility: score,
-      ));
+      worldLandmarks.add(
+        HandLandmark(
+          type: HandLandmarkType.values[i],
+          x: worldLandmarksData[base],
+          y: worldLandmarksData[base + 1],
+          z: worldLandmarksData[base + 2],
+          visibility: score,
+        ),
+      );
     }
 
     return HandLandmarks(

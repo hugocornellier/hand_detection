@@ -77,8 +77,14 @@ class MultiOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawConnections(Canvas canvas, Hand result, double scaleX,
-      double scaleY, double offsetX, double offsetY) {
+  void _drawConnections(
+    Canvas canvas,
+    Hand result,
+    double scaleX,
+    double scaleY,
+    double offsetX,
+    double offsetY,
+  ) {
     final Paint paint = Paint()
       ..color = Colors.green.withValues(alpha: 0.8)
       ..strokeWidth = 3
@@ -100,22 +106,38 @@ class MultiOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawLandmarks(Canvas canvas, Hand result, double scaleX, double scaleY,
-      double offsetX, double offsetY) {
+  void _drawLandmarks(
+    Canvas canvas,
+    Hand result,
+    double scaleX,
+    double scaleY,
+    double offsetX,
+    double offsetY,
+  ) {
     for (final HandLandmark l in result.landmarks) {
       if (l.visibility > 0.5) {
         final double cx = l.x * scaleX + offsetX;
         final double cy = l.y * scaleY + offsetY;
-        drawLandmarkMarker(canvas, cx, cy,
-            glowPaint: _glowPaint,
-            pointPaint: _pointPaint,
-            centerPaint: _dotPaint);
+        drawLandmarkMarker(
+          canvas,
+          cx,
+          cy,
+          glowPaint: _glowPaint,
+          pointPaint: _pointPaint,
+          centerPaint: _dotPaint,
+        );
       }
     }
   }
 
-  void _drawBbox(Canvas canvas, Hand r, double scaleX, double scaleY,
-      double offsetX, double offsetY) {
+  void _drawBbox(
+    Canvas canvas,
+    Hand r,
+    double scaleX,
+    double scaleY,
+    double offsetX,
+    double offsetY,
+  ) {
     if (r.rotation != null &&
         r.rotatedCenterX != null &&
         r.rotatedCenterY != null &&
@@ -239,8 +261,15 @@ class CameraHandOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawConnections(Canvas canvas, Hand hand, double Function(double) tx,
-      double scaleX, double scaleY, double offsetX, double offsetY) {
+  void _drawConnections(
+    Canvas canvas,
+    Hand hand,
+    double Function(double) tx,
+    double scaleX,
+    double scaleY,
+    double offsetX,
+    double offsetY,
+  ) {
     final Paint paint = Paint()
       ..color = Colors.green.withValues(alpha: 0.8)
       ..strokeWidth = 3
@@ -262,22 +291,40 @@ class CameraHandOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawLandmarks(Canvas canvas, Hand hand, double Function(double) tx,
-      double scaleX, double scaleY, double offsetX, double offsetY) {
+  void _drawLandmarks(
+    Canvas canvas,
+    Hand hand,
+    double Function(double) tx,
+    double scaleX,
+    double scaleY,
+    double offsetX,
+    double offsetY,
+  ) {
     for (final HandLandmark l in hand.landmarks) {
       if (l.visibility > 0.5) {
         final double cx = tx(l.x);
         final double cy = l.y * scaleY + offsetY;
-        drawLandmarkMarker(canvas, cx, cy,
-            glowPaint: _glowPaint,
-            pointPaint: _pointPaint,
-            centerPaint: _dotPaint);
+        drawLandmarkMarker(
+          canvas,
+          cx,
+          cy,
+          glowPaint: _glowPaint,
+          pointPaint: _pointPaint,
+          centerPaint: _dotPaint,
+        );
       }
     }
   }
 
-  void _drawBbox(Canvas canvas, Hand hand, double Function(double) tx,
-      double scaleX, double scaleY, double offsetX, double offsetY) {
+  void _drawBbox(
+    Canvas canvas,
+    Hand hand,
+    double Function(double) tx,
+    double scaleX,
+    double scaleY,
+    double offsetX,
+    double offsetY,
+  ) {
     if (hand.rotation != null &&
         hand.rotatedCenterX != null &&
         hand.rotatedCenterY != null &&
@@ -317,8 +364,15 @@ class CameraHandOverlayPainter extends CustomPainter {
     canvas.drawRect(rect, boxPaint);
   }
 
-  void _drawGesture(Canvas canvas, Hand hand, double Function(double) tx,
-      double scaleX, double scaleY, double offsetX, double offsetY) {
+  void _drawGesture(
+    Canvas canvas,
+    Hand hand,
+    double Function(double) tx,
+    double scaleX,
+    double scaleY,
+    double offsetX,
+    double offsetY,
+  ) {
     final gesture = hand.gesture;
     if (gesture == null || gesture.type == GestureType.unknown) return;
 
@@ -342,10 +396,7 @@ class CameraHandOverlayPainter extends CustomPainter {
     canvas.drawCircle(Offset(x, y), 28, borderPaint);
 
     final textPainter = TextPainter(
-      text: TextSpan(
-        text: emoji,
-        style: const TextStyle(fontSize: 32),
-      ),
+      text: TextSpan(text: emoji, style: const TextStyle(fontSize: 32)),
       textDirection: TextDirection.ltr,
     );
     textPainter.layout();
@@ -373,10 +424,7 @@ class CameraHandOverlayPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     );
     confPainter.layout();
-    confPainter.paint(
-      canvas,
-      Offset(x - confPainter.width / 2, y + 32),
-    );
+    confPainter.paint(canvas, Offset(x - confPainter.width / 2, y + 32));
   }
 
   @override

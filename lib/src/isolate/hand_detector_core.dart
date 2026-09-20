@@ -136,8 +136,9 @@ class HandDetectorCore {
     if (enableGestures &&
         gestureEmbedderBytes != null &&
         gestureClassifierBytes != null) {
-      _gestureRecognizer =
-          GestureRecognizer(minConfidence: gestureMinConfidence);
+      _gestureRecognizer = GestureRecognizer(
+        minConfidence: gestureMinConfidence,
+      );
       if (useCompiledModel) {
         await _gestureRecognizer!.initializeCompiledFromBuffers(
           embedderBytes: gestureEmbedderBytes,
@@ -171,13 +172,15 @@ class HandDetectorCore {
     // whenever we are tracking fewer than [_maxDetections]). With tracking off
     // this reduces to running the palm detector every frame (original
     // behaviour).
-    final List<PalmDetection> tracked =
-        _enableTracking ? _trackedRois : const [];
+    final List<PalmDetection> tracked = _enableTracking
+        ? _trackedRois
+        : const [];
     // MediaPipe gating (NormalizedRectVectorHasMinSizeCalculator): only run the
     // palm detector while we are tracking fewer than [_maxDetections] hands.
     final bool runPalm = !_enableTracking || tracked.length < _maxDetections;
-    final List<PalmDetection> palms =
-        runPalm ? await _palm!.detectOnMat(image) : const [];
+    final List<PalmDetection> palms = runPalm
+        ? await _palm!.detectOnMat(image)
+        : const [];
 
     // MediaPipe AssociationNormRectCalculator: merge fresh palm-derived ROIs
     // (low priority) with the previous frame's landmark ROIs (high priority),
@@ -185,10 +188,13 @@ class HandDetectorCore {
     // hand keeps its stable tracked ROI and duplicates are removed within each
     // list too. With tracking off this reduces to the per-frame palm list.
     List<PalmDetection> rois = _enableTracking
-        ? associateRois(palms, tracked,
+        ? associateRois(
+            palms,
+            tracked,
             imageWidth: imgW,
             imageHeight: imgH,
-            minSimilarityThreshold: _tracking.associationIou)
+            minSimilarityThreshold: _tracking.associationIou,
+          )
         : palms;
     if (rois.length > _maxDetections) {
       // MediaPipe caps palm detections (ClipDetectionVectorSizeCalculator) and
@@ -220,14 +226,16 @@ class HandDetectorCore {
 
       final (:cx, :cy, :size) = ImageUtils.palmCoordinates(roi, imgW, imgH);
 
-      cropDataList.add(_HandCropData(
-        palm: roi,
-        croppedHand: cropped,
-        rotation: roi.rotation,
-        centerX: cx,
-        centerY: cy,
-        cropSize: size,
-      ));
+      cropDataList.add(
+        _HandCropData(
+          palm: roi,
+          croppedHand: cropped,
+          rotation: roi.rotation,
+          centerX: cx,
+          centerY: cy,
+          cropSize: size,
+        ),
+      );
     }
 
     final futures = cropDataList.map((data) async {
@@ -258,22 +266,32 @@ class HandDetectorCore {
   List<Hand> _palmsToHands(cv.Mat image, List<PalmDetection> palms) {
     final results = <Hand>[];
     for (final palm in palms) {
-      final (:cx, :cy, :size) =
-          ImageUtils.palmCoordinates(palm, image.cols, image.rows);
+      final (:cx, :cy, :size) = ImageUtils.palmCoordinates(
+        palm,
+        image.cols,
+        image.rows,
+      );
       final halfSize = size / 2;
-      results.add(Hand(
-        boundingBox:
-            _clampedBoundingBox(cx, cy, halfSize, image.cols, image.rows),
-        score: palm.score,
-        landmarks: const [],
-        imageWidth: image.cols,
-        imageHeight: image.rows,
-        handedness: null,
-        rotation: palm.rotation,
-        rotatedCenterX: cx,
-        rotatedCenterY: cy,
-        rotatedSize: size,
-      ));
+      results.add(
+        Hand(
+          boundingBox: _clampedBoundingBox(
+            cx,
+            cy,
+            halfSize,
+            image.cols,
+            image.rows,
+          ),
+          score: palm.score,
+          landmarks: const [],
+          imageWidth: image.cols,
+          imageHeight: image.rows,
+          handedness: null,
+          rotation: palm.rotation,
+          rotatedCenterX: cx,
+          rotatedCenterY: cy,
+          rotatedSize: size,
+        ),
+      );
     }
     return results;
   }
@@ -310,13 +328,15 @@ class HandDetectorCore {
         final xOrig = xRot + data.centerX;
         final yOrig = yRot + data.centerY;
 
-        transformedLandmarks.add(HandLandmark(
-          type: lm.type,
-          x: xOrig.clamp(0, image.cols.toDouble()),
-          y: yOrig.clamp(0, image.rows.toDouble()),
-          z: lm.z,
-          visibility: lm.visibility,
-        ));
+        transformedLandmarks.add(
+          HandLandmark(
+            type: lm.type,
+            x: xOrig.clamp(0, image.cols.toDouble()),
+            y: yOrig.clamp(0, image.rows.toDouble()),
+            z: lm.z,
+            visibility: lm.visibility,
+          ),
+        );
       }
 
       GestureResult? gesture;
@@ -331,24 +351,35 @@ class HandDetectorCore {
       }
 
       final halfSize = data.cropSize / 2;
-      results.add(Hand(
-        boundingBox: _clampedBoundingBox(
-            data.centerX, data.centerY, halfSize, image.cols, image.rows),
-        score: data.palm.score,
-        landmarks: transformedLandmarks,
-        imageWidth: image.cols,
-        imageHeight: image.rows,
-        handedness: lms.handedness,
-        rotation: data.rotation,
-        rotatedCenterX: data.centerX,
-        rotatedCenterY: data.centerY,
-        rotatedSize: data.cropSize,
-        gesture: gesture,
-      ));
+      results.add(
+        Hand(
+          boundingBox: _clampedBoundingBox(
+            data.centerX,
+            data.centerY,
+            halfSize,
+            image.cols,
+            image.rows,
+          ),
+          score: data.palm.score,
+          landmarks: transformedLandmarks,
+          imageWidth: image.cols,
+          imageHeight: image.rows,
+          handedness: lms.handedness,
+          rotation: data.rotation,
+          rotatedCenterX: data.centerX,
+          rotatedCenterY: data.centerY,
+          rotatedSize: data.cropSize,
+          gesture: gesture,
+        ),
+      );
 
       if (_enableTracking) {
         final nextRoi = _rectFromLandmarks(
-            transformedLandmarks, image.cols, image.rows, lms.score);
+          transformedLandmarks,
+          image.cols,
+          image.rows,
+          lms.score,
+        );
         if (nextRoi != null) _nextTrackedRois.add(nextRoi);
       }
     }
@@ -357,7 +388,12 @@ class HandDetectorCore {
   }
 
   BoundingBox _clampedBoundingBox(
-      double centerX, double centerY, double halfSize, int imgW, int imgH) {
+    double centerX,
+    double centerY,
+    double halfSize,
+    int imgW,
+    int imgH,
+  ) {
     return BoundingBox.ltrb(
       (centerX - halfSize).clamp(0, imgW.toDouble()),
       (centerY - halfSize).clamp(0, imgH.toDouble()),
@@ -375,7 +411,11 @@ class HandDetectorCore {
   /// Builds the next-frame rotated ROI for a hand from its landmarks via the
   /// shared [roiFromHandLandmarks] (MediaPipe's landmarks-to-rect step).
   PalmDetection? _rectFromLandmarks(
-      List<HandLandmark> lms, int imgW, int imgH, double score) {
+    List<HandLandmark> lms,
+    int imgW,
+    int imgH,
+    double score,
+  ) {
     return roiFromHandLandmarks(
       xs: [for (final l in lms) l.x],
       ys: [for (final l in lms) l.y],

@@ -92,8 +92,8 @@ class CreationOptions {
     result as List<Object?>;
     return CreationOptions(
       uri: result[0]! as String,
-      httpHeaders:
-          (result[1] as Map<Object?, Object?>?)!.cast<String, String>(),
+      httpHeaders: (result[1] as Map<Object?, Object?>?)!
+          .cast<String, String>(),
     );
   }
 
@@ -265,9 +265,10 @@ class AVFoundationVideoPlayerApi {
   AVFoundationVideoPlayerApi({
     BinaryMessenger? binaryMessenger,
     String messageChannelSuffix = '',
-  })  : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix =
-            messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -417,9 +418,10 @@ class VideoPlayerInstanceApi {
   VideoPlayerInstanceApi({
     BinaryMessenger? binaryMessenger,
     String messageChannelSuffix = '',
-  })  : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix =
-            messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();

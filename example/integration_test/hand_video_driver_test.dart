@@ -33,15 +33,23 @@ import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 const String _inDir = String.fromEnvironment('HAND_VIDEO_IN');
 const String _outDirDefine = String.fromEnvironment('HAND_VIDEO_OUT');
-const bool _enableTracking =
-    bool.fromEnvironment('HAND_VIDEO_TRACKING', defaultValue: true);
-const String _confStr =
-    String.fromEnvironment('HAND_VIDEO_CONF', defaultValue: '0.5');
-const String _maxHandsStr =
-    String.fromEnvironment('HAND_VIDEO_MAX_HANDS', defaultValue: '2');
+const bool _enableTracking = bool.fromEnvironment(
+  'HAND_VIDEO_TRACKING',
+  defaultValue: true,
+);
+const String _confStr = String.fromEnvironment(
+  'HAND_VIDEO_CONF',
+  defaultValue: '0.5',
+);
+const String _maxHandsStr = String.fromEnvironment(
+  'HAND_VIDEO_MAX_HANDS',
+  defaultValue: '2',
+);
 // skeleton-and-landmarks-only overlay. Drawing-only: detection is unaffected.
-const bool _drawBoxes =
-    bool.fromEnvironment('HAND_VIDEO_BOXES', defaultValue: true);
+const bool _drawBoxes = bool.fromEnvironment(
+  'HAND_VIDEO_BOXES',
+  defaultValue: true,
+);
 // Hold a hand's last well-formed skeleton for up to this many frames when the
 // detector briefly loses it or it becomes occluded. Keeps a skeleton-only
 // overlay from flickering off (the bounding box used to hide those gaps).
@@ -51,18 +59,26 @@ const int _holdFrames = int.fromEnvironment('HAND_VIDEO_HOLD', defaultValue: 0);
 // ─────────────────────────── Gesture badges ───────────────────────────────
 // Opt-in. When enabled, the detector runs gesture recognition and a stabilized
 // gesture label + emoji icon is drawn above each hand. Drawing-only.
-const bool _enableGestures =
-    bool.fromEnvironment('HAND_VIDEO_GESTURES', defaultValue: false);
+const bool _enableGestures = bool.fromEnvironment(
+  'HAND_VIDEO_GESTURES',
+  defaultValue: false,
+);
 const String _iconsDir = String.fromEnvironment('HAND_VIDEO_ICONS');
-const String _gestureConfStr =
-    String.fromEnvironment('HAND_VIDEO_GESTURE_CONF', defaultValue: '0.55');
+const String _gestureConfStr = String.fromEnvironment(
+  'HAND_VIDEO_GESTURE_CONF',
+  defaultValue: '0.55',
+);
 // A gesture must repeat for this many consecutive frames before it is shown,
 // and it is held for this many frames after it stops being detected. Together
 // they remove single-frame flicker and brief unknown/low-confidence dips.
-const int _gestureConfirm =
-    int.fromEnvironment('HAND_VIDEO_GESTURE_CONFIRM', defaultValue: 3);
-const int _gestureHold =
-    int.fromEnvironment('HAND_VIDEO_GESTURE_HOLD', defaultValue: 6);
+const int _gestureConfirm = int.fromEnvironment(
+  'HAND_VIDEO_GESTURE_CONFIRM',
+  defaultValue: 3,
+);
+const int _gestureHold = int.fromEnvironment(
+  'HAND_VIDEO_GESTURE_HOLD',
+  defaultValue: 6,
+);
 
 // Overlay style, matching the VideoFileScreen defaults.
 const int _boundingBoxColor = 0xFFFF9800; // orange
@@ -110,20 +126,23 @@ void main() {
     // They are resized per-video to the badge size inside _processVideo.
     final Map<GestureType, _RawIcon> rawIcons =
         (_enableGestures && _iconsDir.isNotEmpty)
-            ? _loadRawIcons(_iconsDir)
-            : <GestureType, _RawIcon>{};
+        ? _loadRawIcons(_iconsDir)
+        : <GestureType, _RawIcon>{};
 
     // ignore: avoid_print
-    print('CONFIG in=$_inDir out=$outDir tracking=$_enableTracking '
-        'conf=$conf maxHands=$maxHands gestures=$_enableGestures '
-        'icons=${rawIcons.length} gestureConf=$gestureConf');
+    print(
+      'CONFIG in=$_inDir out=$outDir tracking=$_enableTracking '
+      'conf=$conf maxHands=$maxHands gestures=$_enableGestures '
+      'icons=${rawIcons.length} gestureConf=$gestureConf',
+    );
 
-    final inputs = inputDir
-        .listSync()
-        .whereType<File>()
-        .where((f) => f.path.toLowerCase().endsWith('.mp4'))
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
+    final inputs =
+        inputDir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.toLowerCase().endsWith('.mp4'))
+            .toList()
+          ..sort((a, b) => a.path.compareTo(b.path));
     for (final f in inputs) {
       final name = f.uri.pathSegments.last.replaceAll(RegExp(r'\.mp4$'), '');
       final outPath = '$outDir/${name}_annot.mp4';
@@ -142,8 +161,13 @@ void main() {
   }, timeout: const Timeout(Duration(minutes: 45)));
 }
 
-Future<void> _processVideo(HandDetector detector, String path, String outPath,
-    Map<GestureType, _RawIcon> rawIcons, double gestureConf) async {
+Future<void> _processVideo(
+  HandDetector detector,
+  String path,
+  String outPath,
+  Map<GestureType, _RawIcon> rawIcons,
+  double gestureConf,
+) async {
   final cap = cv.VideoCapture.fromFile(path);
   if (!cap.isOpened) {
     cap.release();
@@ -220,10 +244,12 @@ Future<void> _processVideo(HandDetector detector, String path, String outPath,
 
   final base = path.split('/').last;
   // ignore: avoid_print
-  print('RESULT name=$base frames=$idx withHands=$framesWithHands '
-      'twoHands=$twoHands boxes=$_drawBoxes '
-      'total=$total fps=${fps.toStringAsFixed(2)} '
-      'secs=${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} out=$outPath');
+  print(
+    'RESULT name=$base frames=$idx withHands=$framesWithHands '
+    'twoHands=$twoHands boxes=$_drawBoxes '
+    'total=$total fps=${fps.toStringAsFixed(2)} '
+    'secs=${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} out=$outPath',
+  );
   // ignore: avoid_print
   print('ONEHAND ${oneHandFrames.join(",")}');
 }
@@ -235,8 +261,12 @@ cv.Scalar _bgr(int argb) {
   return cv.Scalar(b.toDouble(), g.toDouble(), r.toDouble());
 }
 
-void _drawHandsOnMat(cv.Mat mat, List<Hand> hands,
-    Map<GestureType, _SizedIcon> icons, int iconD) {
+void _drawHandsOnMat(
+  cv.Mat mat,
+  List<Hand> hands,
+  Map<GestureType, _SizedIcon> icons,
+  int iconD,
+) {
   if (hands.isEmpty) return;
   final black = cv.Scalar(0, 0, 0);
   final w = mat.cols;
@@ -322,7 +352,11 @@ void _drawHandsOnMat(cv.Mat mat, List<Hand> hands,
 // on a solid dark background so it reads over any footage. No-op unless the
 // hand carries a stabilized gesture.
 void _drawGestureBadge(
-    cv.Mat mat, Hand hand, Map<GestureType, _SizedIcon> icons, int iconD) {
+  cv.Mat mat,
+  Hand hand,
+  Map<GestureType, _SizedIcon> icons,
+  int iconD,
+) {
   final g = hand.gesture;
   if (g == null || g.type == GestureType.unknown) return;
   final label = _gestureLabelText[g.type];
@@ -333,8 +367,12 @@ void _drawGestureBadge(
 
   final double fontScale = iconD / 50.0;
   final int thickness = math.max(2, (iconD / 26).round());
-  final (textSz, _) =
-      cv.getTextSize(label, cv.FONT_HERSHEY_DUPLEX, fontScale, thickness);
+  final (textSz, _) = cv.getTextSize(
+    label,
+    cv.FONT_HERSHEY_DUPLEX,
+    fontScale,
+    thickness,
+  );
 
   final _SizedIcon? icon = icons[g.type];
   final int pad = (iconD * 0.34).round();
@@ -536,7 +574,11 @@ class HandSmoother {
       track.lastBottom = bb.bottom;
       track.hasBox = true;
       final stable = track.updateGesture(
-          hands[p].gesture, gestureConf, gestureConfirm, gestureHold);
+        hands[p].gesture,
+        gestureConf,
+        gestureConfirm,
+        gestureHold,
+      );
       final sh = _smoothHand(hands[p], track, tSec, stable);
       if (holdFrames > 0) {
         if (_wellFormed(sh)) {
@@ -567,14 +609,19 @@ class HandSmoother {
       }
       tr.missedFrames++;
     }
-    _tracks
-        .removeWhere((t) => t.missedFrames > math.max(_maxMissed, holdFrames));
+    _tracks.removeWhere(
+      (t) => t.missedFrames > math.max(_maxMissed, holdFrames),
+    );
 
     return out;
   }
 
   Hand _smoothHand(
-      Hand hand, _HandTrack track, double tSec, GestureResult? gesture) {
+    Hand hand,
+    _HandTrack track,
+    double tSec,
+    GestureResult? gesture,
+  ) {
     if (hand.landmarks.isEmpty) return hand;
     final smoothed = <HandLandmark>[];
     for (int i = 0; i < hand.landmarks.length; i++) {
@@ -587,13 +634,15 @@ class HandSmoother {
         ];
         track.filters[i] = fs;
       }
-      smoothed.add(HandLandmark(
-        type: lm.type,
-        x: fs[0].filter(lm.x, tSec),
-        y: fs[1].filter(lm.y, tSec),
-        z: lm.z,
-        visibility: lm.visibility,
-      ));
+      smoothed.add(
+        HandLandmark(
+          type: lm.type,
+          x: fs[0].filter(lm.x, tSec),
+          y: fs[1].filter(lm.y, tSec),
+          z: lm.z,
+          visibility: lm.visibility,
+        ),
+      );
     }
     return Hand(
       boundingBox: hand.boundingBox,
@@ -619,9 +668,11 @@ class HandSmoother {
     final iw = math.max(0.0, r - l);
     final ih = math.max(0.0, bo - t);
     final inter = iw * ih;
-    final aa = math.max(0.0, box.right - box.left) *
+    final aa =
+        math.max(0.0, box.right - box.left) *
         math.max(0.0, box.bottom - box.top);
-    final bb = math.max(0.0, b.lastRight - b.lastLeft) *
+    final bb =
+        math.max(0.0, b.lastRight - b.lastLeft) *
         math.max(0.0, b.lastBottom - b.lastTop);
     final union = aa + bb - inter;
     if (union <= 0) return 0;
@@ -650,7 +701,11 @@ class _HandTrack {
   // null). A gesture is shown only after [confirmFrames] consecutive detections
   // and is held for [holdFrames] frames once detection lapses.
   GestureResult? updateGesture(
-      GestureResult? raw, double minConf, int confirmFrames, int holdFrames) {
+    GestureResult? raw,
+    double minConf,
+    int confirmFrames,
+    int holdFrames,
+  ) {
     if (raw != null &&
         raw.type != GestureType.unknown &&
         raw.confidence >= minConf) {

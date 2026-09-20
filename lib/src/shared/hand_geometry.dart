@@ -46,20 +46,22 @@ class PalmDetection {
 
 /// Generates the palm-detection SSD anchors for the given square input size.
 List<List<double>> buildPalmAnchors(int inH, int inW) {
-  return generateAnchors(SSDAnchorOptions(
-    numLayers: 4,
-    minScale: 0.1484375,
-    maxScale: 0.75,
-    inputSizeHeight: inH,
-    inputSizeWidth: inW,
-    anchorOffsetX: 0.5,
-    anchorOffsetY: 0.5,
-    strides: [8, 16, 16, 16],
-    aspectRatios: [1.0],
-    reduceBoxesInLowestLayer: false,
-    interpolatedScaleAspectRatio: 1.0,
-    fixedAnchorSize: true,
-  ));
+  return generateAnchors(
+    SSDAnchorOptions(
+      numLayers: 4,
+      minScale: 0.1484375,
+      maxScale: 0.75,
+      inputSizeHeight: inH,
+      inputSizeWidth: inW,
+      anchorOffsetX: 0.5,
+      anchorOffsetY: 0.5,
+      strides: [8, 16, 16, 16],
+      aspectRatios: [1.0],
+      reduceBoxesInLowestLayer: false,
+      interpolatedScaleAspectRatio: 1.0,
+      fixedAnchorSize: true,
+    ),
+  );
 }
 
 /// Decodes raw box predictions using anchors.
@@ -162,20 +164,22 @@ List<PalmDetection> postprocessPalms(
       if (imageHeight > imageWidth) {
         sqnRrCenterX =
             (sqnRrCenterX * squareStandardSize - squarePaddingHalfSize) /
-                imageWidth;
+            imageWidth;
       } else {
         sqnRrCenterY =
             (sqnRrCenterY * squareStandardSize - squarePaddingHalfSize) /
-                imageHeight;
+            imageHeight;
       }
 
-      palms.add(PalmDetection(
-        sqnRrSize: sqnRrSize,
-        rotation: rotation,
-        sqnRrCenterX: sqnRrCenterX,
-        sqnRrCenterY: sqnRrCenterY,
-        score: pdScore,
-      ));
+      palms.add(
+        PalmDetection(
+          sqnRrSize: sqnRrSize,
+          rotation: rotation,
+          sqnRrCenterX: sqnRrCenterX,
+          sqnRrCenterY: sqnRrCenterY,
+          score: pdScore,
+        ),
+      );
     }
   }
 
@@ -228,8 +232,9 @@ PalmDetection? roiFromHandLandmarks({
   // oriented so it points "up" (MediaPipe's kTargetAngle of pi/2).
   final x1 = ((xs[5] + xs[13]) / 2 + xs[9]) / 2;
   final y1 = ((ys[5] + ys[13]) / 2 + ys[9]) / 2;
-  final rotation =
-      normalizeRadians(0.5 * math.pi - math.atan2(-(y1 - ys[0]), x1 - xs[0]));
+  final rotation = normalizeRadians(
+    0.5 * math.pi - math.atan2(-(y1 - ys[0]), x1 - xs[0]),
+  );
   final cosR = math.cos(rotation);
   final sinR = math.sin(rotation);
 
@@ -295,7 +300,11 @@ PalmDetection? roiFromHandLandmarks({
 /// axis-aligned boxes is invariant under the per-axis normalisation MediaPipe
 /// applies, so this equals MediaPipe's normalised-space overlap similarity.
 double roiIou(
-    PalmDetection a, PalmDetection b, int imageWidth, int imageHeight) {
+  PalmDetection a,
+  PalmDetection b,
+  int imageWidth,
+  int imageHeight,
+) {
   final maxDim = math.max(imageWidth, imageHeight).toDouble();
   final aHalf = a.sqnRrSize * maxDim / 2;
   final bHalf = b.sqnRrSize * maxDim / 2;
@@ -332,8 +341,9 @@ List<PalmDetection> associateRois(
 }) {
   final kept = <PalmDetection>[];
   void add(PalmDetection roi) {
-    kept.removeWhere((o) =>
-        roiIou(o, roi, imageWidth, imageHeight) > minSimilarityThreshold);
+    kept.removeWhere(
+      (o) => roiIou(o, roi, imageWidth, imageHeight) > minSimilarityThreshold,
+    );
     kept.add(roi);
   }
 

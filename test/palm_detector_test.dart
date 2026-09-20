@@ -364,10 +364,7 @@ void main() {
     test('throws StateError when detectOnMat called before init', () {
       final mat = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
       try {
-        expect(
-          () => detector.detectOnMat(mat),
-          throwsA(isA<StateError>()),
-        );
+        expect(() => detector.detectOnMat(mat), throwsA(isA<StateError>()));
       } finally {
         mat.dispose();
       }
@@ -567,50 +564,62 @@ void main() {
       await detector.dispose();
     });
 
-    test('portrait image (height > width) exercises portrait padding branch',
-        () async {
-      // Load a real hand image and transpose to make it portrait
-      final imageBytes = File(
-        '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
-      ).readAsBytesSync();
-      final original =
-          cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
+    test(
+      'portrait image (height > width) exercises portrait padding branch',
+      () async {
+        // Load a real hand image and transpose to make it portrait
+        final imageBytes = File(
+          '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
+        ).readAsBytesSync();
+        final original = cv.imdecode(
+          Uint8List.fromList(imageBytes),
+          cv.IMREAD_COLOR,
+        );
 
-      // Crop to portrait orientation (taller than wide)
-      final portraitMat = original.region(cv.Rect(100, 0, 300, original.rows));
+        // Crop to portrait orientation (taller than wide)
+        final portraitMat = original.region(
+          cv.Rect(100, 0, 300, original.rows),
+        );
 
-      try {
-        // This should exercise the _imageHeight > _imageWidth branch in _postprocess
-        expect(portraitMat.rows, greaterThan(portraitMat.cols));
-        final palms = await detector.detectOnMat(portraitMat);
-        // Should not crash; may or may not detect depending on crop
-        expect(palms, isNotNull);
-      } finally {
-        portraitMat.dispose();
-        original.dispose();
-      }
-    });
+        try {
+          // This should exercise the _imageHeight > _imageWidth branch in _postprocess
+          expect(portraitMat.rows, greaterThan(portraitMat.cols));
+          final palms = await detector.detectOnMat(portraitMat);
+          // Should not crash; may or may not detect depending on crop
+          expect(palms, isNotNull);
+        } finally {
+          portraitMat.dispose();
+          original.dispose();
+        }
+      },
+    );
 
-    test('landscape image (width > height) exercises landscape padding branch',
-        () async {
-      final imageBytes = File(
-        '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
-      ).readAsBytesSync();
-      final original =
-          cv.imdecode(Uint8List.fromList(imageBytes), cv.IMREAD_COLOR);
+    test(
+      'landscape image (width > height) exercises landscape padding branch',
+      () async {
+        final imageBytes = File(
+          '${Directory.current.path}/example/assets/samples/istockphoto-462908027-612x612.jpg',
+        ).readAsBytesSync();
+        final original = cv.imdecode(
+          Uint8List.fromList(imageBytes),
+          cv.IMREAD_COLOR,
+        );
 
-      // Crop to landscape orientation (wider than tall)
-      final landscapeMat = original.region(cv.Rect(0, 100, original.cols, 300));
+        // Crop to landscape orientation (wider than tall)
+        final landscapeMat = original.region(
+          cv.Rect(0, 100, original.cols, 300),
+        );
 
-      try {
-        expect(landscapeMat.cols, greaterThan(landscapeMat.rows));
-        final palms = await detector.detectOnMat(landscapeMat);
-        expect(palms, isNotNull);
-      } finally {
-        landscapeMat.dispose();
-        original.dispose();
-      }
-    });
+        try {
+          expect(landscapeMat.cols, greaterThan(landscapeMat.rows));
+          final palms = await detector.detectOnMat(landscapeMat);
+          expect(palms, isNotNull);
+        } finally {
+          landscapeMat.dispose();
+          original.dispose();
+        }
+      },
+    );
 
     test('square image exercises else branch (height == width)', () async {
       final imageBytes = File(
@@ -651,7 +660,9 @@ void main() {
         final strictResults = await strictDetector.detectOnMat(mat);
 
         expect(
-            lenientResults.length, greaterThanOrEqualTo(strictResults.length));
+          lenientResults.length,
+          greaterThanOrEqualTo(strictResults.length),
+        );
       } finally {
         mat.dispose();
         await lenientDetector.dispose();

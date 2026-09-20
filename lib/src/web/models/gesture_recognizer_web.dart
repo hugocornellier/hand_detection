@@ -42,14 +42,19 @@ class GestureRecognizerWeb {
     const classifierPath =
         'packages/hand_detection/assets/models/canned_gesture_classifier.tflite';
     final embBytes = (await rootBundle.load(embedderPath)).buffer.asUint8List();
-    final clsBytes =
-        (await rootBundle.load(classifierPath)).buffer.asUint8List();
+    final clsBytes = (await rootBundle.load(
+      classifierPath,
+    )).buffer.asUint8List();
 
     final String resolved = await resolveWebAccelerator(liteRtAccelerator);
-    _embedder =
-        await LiteRtInterpreter.fromBytes(embBytes, accelerator: resolved);
-    _classifier =
-        await LiteRtInterpreter.fromBytes(clsBytes, accelerator: resolved);
+    _embedder = await LiteRtInterpreter.fromBytes(
+      embBytes,
+      accelerator: resolved,
+    );
+    _classifier = await LiteRtInterpreter.fromBytes(
+      clsBytes,
+      accelerator: resolved,
+    );
     _activeAccelerator = _embedder!.activeAccelerator;
     logCompileFallback(
       model: 'GestureEmbedder',
@@ -129,6 +134,8 @@ class GestureRecognizerWeb {
       return GestureResult(type: GestureType.unknown, confidence: confidence);
     }
     return GestureResult(
-        type: GestureType.values[maxIdx], confidence: confidence);
+      type: GestureType.values[maxIdx],
+      confidence: confidence,
+    );
   }
 }

@@ -12,12 +12,14 @@ void main() {
 
   test('HandDetector propagates error when cv.imdecode fails', () async {
     final palmBytes = Uint8List.fromList(
-      File('${Directory.current.path}/assets/models/hand_detection.tflite')
-          .readAsBytesSync(),
+      File(
+        '${Directory.current.path}/assets/models/hand_detection.tflite',
+      ).readAsBytesSync(),
     );
     final landmarkBytes = Uint8List.fromList(
-      File('${Directory.current.path}/assets/models/hand_landmark_full.tflite')
-          .readAsBytesSync(),
+      File(
+        '${Directory.current.path}/assets/models/hand_landmark_full.tflite',
+      ).readAsBytesSync(),
     );
 
     final detector = HandDetector();
@@ -51,10 +53,7 @@ void main() {
 
       final mat = cv.Mat.zeros(1, 1, cv.MatType.CV_8UC3);
       try {
-        expect(
-          () => runner.run(mat),
-          throwsA(isA<StateError>()),
-        );
+        expect(() => runner.run(mat), throwsA(isA<StateError>()));
       } finally {
         mat.dispose();
       }
@@ -112,8 +111,11 @@ void main() {
   group('ImageUtils rotation utilities', () {
     test('keepAspectResizeAndPad maintains aspect ratio', () {
       final source = cv.Mat.zeros(200, 100, cv.MatType.CV_8UC3);
-      final (padded, resized) =
-          ImageUtils.keepAspectResizeAndPad(source, 192, 192);
+      final (padded, resized) = ImageUtils.keepAspectResizeAndPad(
+        source,
+        192,
+        192,
+      );
 
       try {
         expect(padded.cols, 192);
@@ -178,7 +180,9 @@ void main() {
         expect(tensor[0], closeTo(0.0, 0.01)); // R = 0
         expect(tensor[1], closeTo(0.0, 0.01)); // G = 0
         expect(
-            tensor[2], closeTo(1.0, 0.01)); // B = 1 (was 255 in BGR B channel)
+          tensor[2],
+          closeTo(1.0, 0.01),
+        ); // B = 1 (was 255 in BGR B channel)
       } finally {
         mat.dispose();
       }

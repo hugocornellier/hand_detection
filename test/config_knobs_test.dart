@@ -34,16 +34,15 @@ void main() {
       List<List<double>> boxes, {
       double roiScale = 2.6,
       double iouThreshold = 0.45,
-    }) =>
-        postprocessPalms(
-          boxes,
-          imageWidth: 100,
-          imageHeight: 100,
-          squareStandardSize: 100,
-          squarePaddingHalfSize: 0,
-          roiScale: roiScale,
-          iouThreshold: iouThreshold,
-        );
+    }) => postprocessPalms(
+      boxes,
+      imageWidth: 100,
+      imageHeight: 100,
+      squareStandardSize: 100,
+      squarePaddingHalfSize: 0,
+      roiScale: roiScale,
+      iouThreshold: iouThreshold,
+    );
 
     test('roiScale scales the ROI size linearly', () {
       // Decoded box layout: [score, cx, cy, boxSize, kp0X, kp0Y, kp2X, kp2Y].
@@ -66,8 +65,16 @@ void main() {
       // Two rotation-0 squares whose axis-aligned IoU is ~0.5. A low threshold
       // suppresses the weaker one (weighted NMS fuses the cluster -> 1 palm); a
       // high threshold leaves both (-> 2 palms).
-      List<double> box(double cx, double score) =>
-          [score, cx, 0.5, 0.1, cx, 0.55, cx, 0.45];
+      List<double> box(double cx, double score) => [
+        score,
+        cx,
+        0.5,
+        0.1,
+        cx,
+        0.55,
+        cx,
+        0.45,
+      ];
       final boxes = [box(0.45, 0.9), box(0.5367, 0.85)];
 
       expect(square(boxes, iouThreshold: 0.1), hasLength(1));
@@ -181,12 +188,15 @@ void main() {
       final det = HandDetector();
       await det.initializeFromBuffers(
         palmDetectionBytes: load('$root/assets/models/hand_detection.tflite'),
-        handLandmarkBytes:
-            load('$root/assets/models/hand_landmark_full.tflite'),
+        handLandmarkBytes: load(
+          '$root/assets/models/hand_landmark_full.tflite',
+        ),
         mode: HandMode.boxesAndLandmarks,
         enableTracking: true,
-        trackingConfig:
-            const TrackingConfig(roiScale: 2.4, associationIou: 0.4),
+        trackingConfig: const TrackingConfig(
+          roiScale: 2.4,
+          associationIou: 0.4,
+        ),
       );
       final img = load('$root/example/assets/samples/2-hands.png');
       try {

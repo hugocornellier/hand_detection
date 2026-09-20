@@ -23,8 +23,8 @@ class AVFoundationVideoPlayer extends VideoPlayerPlatform {
     @visibleForTesting AVFoundationVideoPlayerApi? pluginApi,
     @visibleForTesting
     VideoPlayerInstanceApi Function(int playerId)? playerApiProvider,
-  })  : _api = pluginApi ?? AVFoundationVideoPlayerApi(),
-        _playerApiProvider = playerApiProvider ?? _productionApiProvider;
+  }) : _api = pluginApi ?? AVFoundationVideoPlayerApi(),
+       _playerApiProvider = playerApiProvider ?? _productionApiProvider;
 
   final AVFoundationVideoPlayerApi _api;
   // A method to create VideoPlayerInstanceApi instances, which can be
@@ -224,8 +224,8 @@ class AVFoundationVideoPlayer extends VideoPlayerPlatform {
 
     return switch (viewState) {
       VideoPlayerTextureViewState(:final int textureId) => Texture(
-          textureId: textureId,
-        ),
+        textureId: textureId,
+      ),
       VideoPlayerPlatformViewState() => _buildPlatformView(playerId),
     };
   }
@@ -311,26 +311,26 @@ class _PlayerInstance {
     // The strings here must all match the strings in FVPEventBridge.m.
     _eventStreamController.add(switch (map['event']) {
       'initialized' => VideoEvent(
-          eventType: VideoEventType.initialized,
-          duration: Duration(milliseconds: map['duration'] as int),
-          size: Size(
-            (map['width'] as num?)?.toDouble() ?? 0.0,
-            (map['height'] as num?)?.toDouble() ?? 0.0,
-          ),
+        eventType: VideoEventType.initialized,
+        duration: Duration(milliseconds: map['duration'] as int),
+        size: Size(
+          (map['width'] as num?)?.toDouble() ?? 0.0,
+          (map['height'] as num?)?.toDouble() ?? 0.0,
         ),
+      ),
       'completed' => VideoEvent(eventType: VideoEventType.completed),
       'bufferingUpdate' => VideoEvent(
-          buffered: (map['values'] as List<dynamic>)
-              .map<DurationRange>(_toDurationRange)
-              .toList(),
-          eventType: VideoEventType.bufferingUpdate,
-        ),
+        buffered: (map['values'] as List<dynamic>)
+            .map<DurationRange>(_toDurationRange)
+            .toList(),
+        eventType: VideoEventType.bufferingUpdate,
+      ),
       'bufferingStart' => VideoEvent(eventType: VideoEventType.bufferingStart),
       'bufferingEnd' => VideoEvent(eventType: VideoEventType.bufferingEnd),
       'isPlayingStateUpdate' => VideoEvent(
-          eventType: VideoEventType.isPlayingStateUpdate,
-          isPlaying: map['isPlaying'] as bool,
-        ),
+        eventType: VideoEventType.isPlayingStateUpdate,
+        isPlaying: map['isPlaying'] as bool,
+      ),
       _ => VideoEvent(eventType: VideoEventType.unknown),
     });
   }

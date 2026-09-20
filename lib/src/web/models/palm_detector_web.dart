@@ -66,8 +66,10 @@ class PalmDetectorWeb {
     final bytes = raw.buffer.asUint8List();
 
     final String resolved = await resolveWebAccelerator(liteRtAccelerator);
-    _liteRtItp =
-        await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved);
+    _liteRtItp = await LiteRtInterpreter.fromBytes(
+      bytes,
+      accelerator: resolved,
+    );
     _activeAccelerator = _liteRtItp!.activeAccelerator;
     logCompileFallback(
       model: 'PalmDetector',

@@ -63,12 +63,14 @@ void main() {
 
     test('initializeFromBuffers sets isInitialized', () async {
       final embedderBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/gesture_embedder.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/gesture_embedder.tflite',
+        ).readAsBytesSync(),
       );
       final classifierBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/canned_gesture_classifier.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/canned_gesture_classifier.tflite',
+        ).readAsBytesSync(),
       );
 
       final recognizer = GestureRecognizer();
@@ -84,12 +86,14 @@ void main() {
 
     test('re-initialization disposes previous state', () async {
       final embedderBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/gesture_embedder.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/gesture_embedder.tflite',
+        ).readAsBytesSync(),
       );
       final classifierBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/canned_gesture_classifier.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/canned_gesture_classifier.tflite',
+        ).readAsBytesSync(),
       );
 
       final recognizer = GestureRecognizer();
@@ -110,12 +114,14 @@ void main() {
 
     test('multiple disposes do not throw', () async {
       final embedderBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/gesture_embedder.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/gesture_embedder.tflite',
+        ).readAsBytesSync(),
       );
       final classifierBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/canned_gesture_classifier.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/canned_gesture_classifier.tflite',
+        ).readAsBytesSync(),
       );
 
       final recognizer = GestureRecognizer();
@@ -134,12 +140,14 @@ void main() {
 
     setUpAll(() async {
       final embedderBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/gesture_embedder.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/gesture_embedder.tflite',
+        ).readAsBytesSync(),
       );
       final classifierBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/canned_gesture_classifier.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/canned_gesture_classifier.tflite',
+        ).readAsBytesSync(),
       );
 
       recognizer = GestureRecognizer(minConfidence: 0.3);
@@ -239,15 +247,16 @@ void main() {
   });
 
   group('GestureRecognizer confidence thresholding', () {
-    test('high threshold returns unknown for low confidence gestures',
-        () async {
+    test('high threshold returns unknown for low confidence gestures', () async {
       final embedderBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/gesture_embedder.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/gesture_embedder.tflite',
+        ).readAsBytesSync(),
       );
       final classifierBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/canned_gesture_classifier.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/canned_gesture_classifier.tflite',
+        ).readAsBytesSync(),
       );
 
       final strictRecognizer = GestureRecognizer(minConfidence: 0.99);
@@ -275,12 +284,14 @@ void main() {
 
     test('zero threshold always returns a gesture type', () async {
       final embedderBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/gesture_embedder.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/gesture_embedder.tflite',
+        ).readAsBytesSync(),
       );
       final classifierBytes = Uint8List.fromList(
-        File('${Directory.current.path}/assets/models/canned_gesture_classifier.tflite')
-            .readAsBytesSync(),
+        File(
+          '${Directory.current.path}/assets/models/canned_gesture_classifier.tflite',
+        ).readAsBytesSync(),
       );
 
       final lenientRecognizer = GestureRecognizer(minConfidence: 0.0);

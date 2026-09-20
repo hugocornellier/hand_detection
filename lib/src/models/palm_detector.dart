@@ -134,8 +134,11 @@ class PalmDetector {
     Precision precision = Precision.fp32,
   }) async {
     if (_isInitialized) await dispose();
-    final compiled = compiledModelFromBufferAuto(modelBytes,
-        accelerators: accelerators, precision: precision);
+    final compiled = compiledModelFromBufferAuto(
+      modelBytes,
+      accelerators: accelerators,
+      precision: precision,
+    );
     try {
       _setupCompiled(compiled);
     } catch (_) {
@@ -294,10 +297,7 @@ class PalmDetector {
           ImageUtils.matToFloat32Tensor(paddedImage, buffer: _inputBuffer);
           await iso.runForMultipleInputs(
             [_inputBuffer!.buffer],
-            <int, Object>{
-              0: _boxesData!.buffer,
-              1: _scoresData!.buffer,
-            },
+            <int, Object>{0: _boxesData!.buffer, 1: _scoresData!.buffer},
           );
           boxesView = _boxesData!;
           scoresView = _scoresData!;

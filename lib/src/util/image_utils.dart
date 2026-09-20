@@ -28,11 +28,10 @@ class ImageUtils {
       roundDimensions: false,
     );
 
-    final resizedImage = cv.resize(
-      image,
-      (params.newWidth, params.newHeight),
-      interpolation: cv.INTER_LINEAR,
-    );
+    final resizedImage = cv.resize(image, (
+      params.newWidth,
+      params.newHeight,
+    ), interpolation: cv.INTER_LINEAR);
 
     final paddedImage = cv.copyMakeBorder(
       resizedImage,
@@ -79,8 +78,11 @@ class ImageUtils {
     final imageWidth = image.cols;
     final imageHeight = image.rows;
 
-    final (:cx, :cy, size: sizeD) =
-        palmCoordinates(palm, imageWidth, imageHeight);
+    final (:cx, :cy, size: sizeD) = palmCoordinates(
+      palm,
+      imageWidth,
+      imageHeight,
+    );
     final size = sizeD.round();
     if (size <= 0) return null;
     final int outDim = outSize ?? size;
@@ -93,8 +95,11 @@ class ImageUtils {
     // size, avoiding a large native-resolution intermediate Mat and a separate
     // cv.resize. scale == 1 (outDim == size) preserves the original behaviour.
     final double scale = outDim / sizeD;
-    final rotMat =
-        cv.getRotationMatrix2D(cv.Point2f(cx, cy), angleDegrees, scale);
+    final rotMat = cv.getRotationMatrix2D(
+      cv.Point2f(cx, cy),
+      angleDegrees,
+      scale,
+    );
 
     final outCx = outDim / 2.0;
     final outCy = outDim / 2.0;
@@ -122,7 +127,10 @@ class ImageUtils {
   /// [cx, cy, width, height, angleDegrees]
   @visibleForTesting
   static List<double> palmToRect(
-      PalmDetection palm, int imageWidth, int imageHeight) {
+    PalmDetection palm,
+    int imageWidth,
+    int imageHeight,
+  ) {
     final (:cx, :cy, :size) = palmCoordinates(palm, imageWidth, imageHeight);
     final angleDegrees = palm.rotation * 180.0 / math.pi;
 
@@ -159,11 +167,10 @@ class ImageUtils {
       targetHeight: th,
     );
 
-    final resized = cv.resize(
-      src,
-      (params.newWidth, params.newHeight),
-      interpolation: cv.INTER_LINEAR,
-    );
+    final resized = cv.resize(src, (
+      params.newWidth,
+      params.newHeight,
+    ), interpolation: cv.INTER_LINEAR);
 
     final canvas = cv.copyMakeBorder(
       resized,
@@ -238,7 +245,11 @@ class ImageUtils {
   }) {
     final out = reuse ?? createNHWCTensor4D(height, width);
     fillNHWC4DFromBgrBytes(
-        bytes: mat.data, tensor: out, width: width, height: height);
+      bytes: mat.data,
+      tensor: out,
+      width: width,
+      height: height,
+    );
     return out;
   }
 
@@ -305,13 +316,10 @@ class ImageUtils {
     cv.Mat maybeResize(cv.Mat m) {
       if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
       final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
-      final cv.Mat resized = cv.resize(
-          m,
-          (
-            (m.cols * scale).toInt(),
-            (m.rows * scale).toInt(),
-          ),
-          interpolation: cv.INTER_LINEAR);
+      final cv.Mat resized = cv.resize(m, (
+        (m.cols * scale).toInt(),
+        (m.rows * scale).toInt(),
+      ), interpolation: cv.INTER_LINEAR);
       m.dispose();
       return resized;
     }
@@ -351,15 +359,13 @@ class ImageUtils {
 
         if (maxDim != null &&
             (current.cols > maxDim || current.rows > maxDim)) {
-          final double scale = maxDim /
+          final double scale =
+              maxDim /
               (current.cols > current.rows ? current.cols : current.rows);
-          final cv.Mat resized = cv.resize(
-              current,
-              (
-                (current.cols * scale).toInt(),
-                (current.rows * scale).toInt(),
-              ),
-              interpolation: cv.INTER_LINEAR);
+          final cv.Mat resized = cv.resize(current, (
+            (current.cols * scale).toInt(),
+            (current.rows * scale).toInt(),
+          ), interpolation: cv.INTER_LINEAR);
           if (!identical(current, source)) current.dispose();
           current = resized;
         }

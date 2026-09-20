@@ -186,10 +186,12 @@ class CompactSlider extends StatelessWidget {
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2.0,
-                thumbShape:
-                    const RoundSliderThumbShape(enabledThumbRadius: 6.0),
-                overlayShape:
-                    const RoundSliderOverlayShape(overlayRadius: 12.0),
+                thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 6.0,
+                ),
+                overlayShape: const RoundSliderOverlayShape(
+                  overlayRadius: 12.0,
+                ),
               ),
               child: Slider(
                 value: value,
@@ -434,15 +436,14 @@ String _gestureLabel(GestureType g) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(MaterialApp(
-    debugShowCheckedModeBanner: false,
-    title: 'Hand Detection Demo',
-    theme: ThemeData(
-      colorSchemeSeed: Colors.blue,
-      useMaterial3: true,
+  runApp(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Hand Detection Demo',
+      theme: ThemeData(colorSchemeSeed: Colors.blue, useMaterial3: true),
+      home: const HomeScreen(),
     ),
-    home: const HomeScreen(),
-  ));
+  );
 }
 
 class HomeScreen extends StatelessWidget {
@@ -451,9 +452,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Hand Detection Demo'),
-      ),
+      appBar: AppBar(title: const Text('Hand Detection Demo')),
       body: _ScrollableCentered(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
@@ -471,54 +470,53 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 28),
-                _buildSection(
-                  context,
-                  'Hand Detection / Landmarks',
-                  [
-                    _buildModeCard(
-                      context,
-                      icon: Icons.videocam,
-                      title: 'Live Camera',
-                      description: 'Real-time hand detection from camera feed',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const LiveCameraScreen()),
-                        );
-                      },
-                    ),
-                    _buildModeCard(
-                      context,
-                      icon: Icons.image,
-                      title: 'Still Image',
-                      description:
-                          'Detect hands in photos from gallery or camera',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const Example()),
-                        );
-                      },
-                    ),
-                    _buildModeCard(
-                      context,
-                      icon: Icons.movie_creation_outlined,
-                      title: 'Video File',
-                      description:
-                          'Process an MP4 frame-by-frame with smoothed '
-                          'hand detection',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const VideoFileScreen()),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                _buildSection(context, 'Hand Detection / Landmarks', [
+                  _buildModeCard(
+                    context,
+                    icon: Icons.videocam,
+                    title: 'Live Camera',
+                    description: 'Real-time hand detection from camera feed',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const LiveCameraScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildModeCard(
+                    context,
+                    icon: Icons.image,
+                    title: 'Still Image',
+                    description:
+                        'Detect hands in photos from gallery or camera',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const Example(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildModeCard(
+                    context,
+                    icon: Icons.movie_creation_outlined,
+                    title: 'Video File',
+                    description:
+                        'Process an MP4 frame-by-frame with smoothed '
+                        'hand detection',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const VideoFileScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ]),
               ],
             ),
           ),
@@ -527,11 +525,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSection(
-    BuildContext context,
-    String title,
-    List<Widget> cards,
-  ) {
+  Widget _buildSection(BuildContext context, String title, List<Widget> cards) {
     final List<Widget> row = [];
     for (int i = 0; i < cards.length; i++) {
       if (i > 0) row.add(const SizedBox(width: 12));
@@ -546,9 +540,9 @@ class HomeScreen extends StatelessWidget {
           child: Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[700],
-                ),
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -597,9 +591,9 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   description,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -678,8 +672,10 @@ class _ExampleState extends State<Example> {
 
   Future<void> _pickAndRun() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? picked =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100,
+    );
     if (picked == null) return;
 
     setState(() {
@@ -718,8 +714,10 @@ class _ExampleState extends State<Example> {
     } else {
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
-      decodedSize =
-          Size(frame.image.width.toDouble(), frame.image.height.toDouble());
+      decodedSize = Size(
+        frame.image.width.toDouble(),
+        frame.image.height.toDouble(),
+      );
       frame.image.dispose();
     }
 
@@ -767,22 +765,29 @@ class _ExampleState extends State<Example> {
 
             Widget cb(String label, bool v, void Function(bool) set) =>
                 CompactCheckbox(
-                    label: label,
-                    value: v,
-                    onChanged: (x) => updateState(() => set(x ?? false)));
+                  label: label,
+                  value: v,
+                  onChanged: (x) => updateState(() => set(x ?? false)),
+                );
             Widget col(String label, Color c, void Function(Color) set) =>
                 _ColorPickerButton(
-                    label: label,
-                    color: c,
-                    onColorChanged: (x) => updateState(() => set(x)));
-            Widget sl(String label, double v, double mn, double mx,
-                    void Function(double) set) =>
-                CompactSlider(
-                    label: label,
-                    value: v,
-                    min: mn,
-                    max: mx,
-                    onChanged: (x) => updateState(() => set(x)));
+                  label: label,
+                  color: c,
+                  onColorChanged: (x) => updateState(() => set(x)),
+                );
+            Widget sl(
+              String label,
+              double v,
+              double mn,
+              double mx,
+              void Function(double) set,
+            ) => CompactSlider(
+              label: label,
+              value: v,
+              min: mn,
+              max: mx,
+              onChanged: (x) => updateState(() => set(x)),
+            );
 
             return Container(
               decoration: const BoxDecoration(
@@ -806,44 +811,70 @@ class _ExampleState extends State<Example> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
                         ExpansionTile(
-                          title: const Text('Display Options',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Display Options',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           initiallyExpanded: true,
                           children: [
                             Wrap(
                               spacing: 8,
                               runSpacing: 4,
                               children: [
-                                cb('Bounding Boxes', _showBoundingBoxes,
-                                    (v) => _showBoundingBoxes = v),
-                                cb('Skeleton', _showSkeleton,
-                                    (v) => _showSkeleton = v),
-                                cb('Landmarks', _showLandmarks,
-                                    (v) => _showLandmarks = v),
-                                cb('Handedness', _showHandedness,
-                                    (v) => _showHandedness = v),
-                                cb('Gestures', _showGestures,
-                                    (v) => _showGestures = v),
-                                cb('Landmark Labels', _showLandmarkLabels,
-                                    (v) => _showLandmarkLabels = v),
+                                cb(
+                                  'Bounding Boxes',
+                                  _showBoundingBoxes,
+                                  (v) => _showBoundingBoxes = v,
+                                ),
+                                cb(
+                                  'Skeleton',
+                                  _showSkeleton,
+                                  (v) => _showSkeleton = v,
+                                ),
+                                cb(
+                                  'Landmarks',
+                                  _showLandmarks,
+                                  (v) => _showLandmarks = v,
+                                ),
+                                cb(
+                                  'Handedness',
+                                  _showHandedness,
+                                  (v) => _showHandedness = v,
+                                ),
+                                cb(
+                                  'Gestures',
+                                  _showGestures,
+                                  (v) => _showGestures = v,
+                                ),
+                                cb(
+                                  'Landmark Labels',
+                                  _showLandmarkLabels,
+                                  (v) => _showLandmarkLabels = v,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Detection',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Detection',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
                             Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 4.0),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4.0,
+                              ),
                               child: Row(
                                 children: [
                                   const SizedBox(
-                                      width: 70,
-                                      child: Text('Max Hands',
-                                          style: TextStyle(fontSize: 12))),
+                                    width: 70,
+                                    child: Text(
+                                      'Max Hands',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                  ),
                                   Expanded(
                                     child: Slider(
                                       value: _maxHands.toDouble(),
@@ -852,16 +883,21 @@ class _ExampleState extends State<Example> {
                                       divisions: 9,
                                       label: '$_maxHands',
                                       onChanged: (v) => setSheetState(
-                                          () => _maxHands = v.toInt()),
+                                        () => _maxHands = v.toInt(),
+                                      ),
                                       onChangeEnd: (v) =>
                                           onDetectorSettingChange(
-                                              () => _maxHands = v.toInt()),
+                                            () => _maxHands = v.toInt(),
+                                          ),
                                     ),
                                   ),
                                   SizedBox(
-                                      width: 24,
-                                      child: Text('$_maxHands',
-                                          textAlign: TextAlign.right)),
+                                    width: 24,
+                                    child: Text(
+                                      '$_maxHands',
+                                      textAlign: TextAlign.right,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -871,40 +907,69 @@ class _ExampleState extends State<Example> {
                               title: const Text('Gesture recognition'),
                               value: _enableGestures,
                               onChanged: (v) => onDetectorSettingChange(
-                                  () => _enableGestures = v),
+                                () => _enableGestures = v,
+                              ),
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Colors',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Colors',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
                             Wrap(
                               spacing: 6,
                               runSpacing: 6,
                               children: [
-                                col('BBox', _boundingBoxColor,
-                                    (c) => _boundingBoxColor = c),
-                                col('Landmarks', _landmarkColor,
-                                    (c) => _landmarkColor = c),
-                                col('Skeleton', _skeletonColor,
-                                    (c) => _skeletonColor = c),
+                                col(
+                                  'BBox',
+                                  _boundingBoxColor,
+                                  (c) => _boundingBoxColor = c,
+                                ),
+                                col(
+                                  'Landmarks',
+                                  _landmarkColor,
+                                  (c) => _landmarkColor = c,
+                                ),
+                                col(
+                                  'Skeleton',
+                                  _skeletonColor,
+                                  (c) => _skeletonColor = c,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Sizes',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Sizes',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
-                            sl('BBox', _boundingBoxThickness, 0.5, 10.0,
-                                (v) => _boundingBoxThickness = v),
-                            sl('Landmark', _landmarkSize, 0.5, 15.0,
-                                (v) => _landmarkSize = v),
-                            sl('Skeleton', _skeletonThickness, 0.5, 10.0,
-                                (v) => _skeletonThickness = v),
+                            sl(
+                              'BBox',
+                              _boundingBoxThickness,
+                              0.5,
+                              10.0,
+                              (v) => _boundingBoxThickness = v,
+                            ),
+                            sl(
+                              'Landmark',
+                              _landmarkSize,
+                              0.5,
+                              15.0,
+                              (v) => _landmarkSize = v,
+                            ),
+                            sl(
+                              'Skeleton',
+                              _skeletonThickness,
+                              0.5,
+                              10.0,
+                              (v) => _skeletonThickness = v,
+                            ),
                             const SizedBox(height: 8),
                           ],
                         ),
@@ -979,7 +1044,11 @@ class _ExampleState extends State<Example> {
                               painter: HandDetectionsPainter(
                                 hands: _hands,
                                 imageRectOnCanvas: Rect.fromLTWH(
-                                    0, 0, imageRect.width, imageRect.height),
+                                  0,
+                                  0,
+                                  imageRect.width,
+                                  imageRect.height,
+                                ),
                                 originalImageSize: _originalSize!,
                                 showBoundingBoxes: _showBoundingBoxes,
                                 showSkeleton: _showSkeleton,
@@ -1004,19 +1073,26 @@ class _ExampleState extends State<Example> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.add_photo_alternate,
-                            size: 80, color: Colors.grey[300]),
+                        Icon(
+                          Icons.add_photo_alternate,
+                          size: 80,
+                          color: Colors.grey[300],
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           'No image selected',
-                          style:
-                              TextStyle(fontSize: 18, color: Colors.grey[600]),
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey[600],
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Tap the + icon to pick an image',
-                          style:
-                              TextStyle(fontSize: 14, color: Colors.grey[500]),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[500],
+                          ),
                         ),
                       ],
                     ),
@@ -1036,9 +1112,7 @@ class _ExampleState extends State<Example> {
           if (_isLoading)
             Container(
               color: Colors.black54,
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+              child: const Center(child: CircularProgressIndicator()),
             ),
         ],
       ),
@@ -1131,7 +1205,11 @@ class HandDetectionsPainter extends CustomPainter {
           canvas.drawCircle(center, landmarkSize, lmPaint);
           if (showLandmarkLabels) {
             _drawText(
-                canvas, '${lm.type.index}', center + const Offset(5, -5), 9);
+              canvas,
+              '${lm.type.index}',
+              center + const Offset(5, -5),
+              9,
+            );
           }
         }
       }
@@ -1155,8 +1233,12 @@ class HandDetectionsPainter extends CustomPainter {
             hand.gesture!.type != GestureType.unknown) {
           parts.add(_gestureLabel(hand.gesture!.type));
         }
-        _drawLabelChip(canvas, parts.join('  •  '), Offset(rect.left, rect.top),
-            boundingBoxColor);
+        _drawLabelChip(
+          canvas,
+          parts.join('  •  '),
+          Offset(rect.left, rect.top),
+          boundingBoxColor,
+        );
       }
     }
   }
@@ -1324,15 +1406,13 @@ class _InferenceMetric extends StatelessWidget {
   final String label;
   final num? microseconds;
 
-  const _InferenceMetric({
-    required this.label,
-    required this.microseconds,
-  });
+  const _InferenceMetric({required this.label, required this.microseconds});
 
   @override
   Widget build(BuildContext context) {
-    final value =
-        microseconds == null ? '—' : formatInferenceMilliseconds(microseconds!);
+    final value = microseconds == null
+        ? '—'
+        : formatInferenceMilliseconds(microseconds!);
     return Semantics(
       label: microseconds == null
           ? '$label inference time unavailable'
@@ -1454,11 +1534,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       _accelerometerSub = accelerometerEventStream().listen((event) {
         final next = event.x.abs() > event.y.abs()
             ? (event.x > 0
-                ? DeviceOrientation.landscapeLeft
-                : DeviceOrientation.landscapeRight)
+                  ? DeviceOrientation.landscapeLeft
+                  : DeviceOrientation.landscapeRight)
             : (event.y > 0
-                ? DeviceOrientation.portraitUp
-                : DeviceOrientation.portraitDown);
+                  ? DeviceOrientation.portraitUp
+                  : DeviceOrientation.portraitDown);
         if (next == DeviceOrientation.portraitDown &&
             (_deviceOrientation == DeviceOrientation.landscapeLeft ||
                 _deviceOrientation == DeviceOrientation.landscapeRight)) {
@@ -1501,7 +1581,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     } catch (e) {
       if (!_useCompiledModel) rethrow;
       debugPrint(
-          'Live camera CompiledModel init failed; falling back to XNNPACK: $e');
+        'Live camera CompiledModel init failed; falling back to XNNPACK: $e',
+      );
       if (mounted) {
         setState(() => _useCompiledModel = false);
       } else {
@@ -1518,8 +1599,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       _resetInferenceStats();
     });
     // ignore: avoid_print
-    print('[live-bench] switching backend -> '
-        '${_useCompiledModel ? 'compiledmodel' : 'xnnpack'}');
+    print(
+      '[live-bench] switching backend -> '
+      '${_useCompiledModel ? 'compiledmodel' : 'xnnpack'}',
+    );
     await _reinitDetector();
     if (mounted) setState(() => _isInitialized = true);
   }
@@ -1682,7 +1765,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                     onChanged: (value) =>
                         setMenuState(() => _maxHands = value.toInt()),
                     onChangeEnd: (value) => _updateDetectorSettings(
-                        () => _maxHands = value.toInt()),
+                      () => _maxHands = value.toInt(),
+                    ),
                   ),
                 ),
                 SizedBox(
@@ -1757,9 +1841,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No cameras available')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('No cameras available')));
         }
         return;
       }
@@ -1812,10 +1896,12 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   bool get _canSwitchCamera {
     if (kIsWeb) return false;
     if (!(Platform.isAndroid || Platform.isIOS)) return false;
-    final hasFront = _availableCameras
-        .any((c) => c.lensDirection == CameraLensDirection.front);
-    final hasBack = _availableCameras
-        .any((c) => c.lensDirection == CameraLensDirection.back);
+    final hasFront = _availableCameras.any(
+      (c) => c.lensDirection == CameraLensDirection.front,
+    );
+    final hasBack = _availableCameras.any(
+      (c) => c.lensDirection == CameraLensDirection.back,
+    );
     return hasFront && hasBack;
   }
 
@@ -1823,8 +1909,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     if (_isSwitchingCamera) return;
     if (!_canSwitchCamera) return;
 
-    final target =
-        _isFrontCamera ? CameraLensDirection.back : CameraLensDirection.front;
+    final target = _isFrontCamera
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
     final next = _availableCameras.firstWhere(
       (c) => c.lensDirection == target,
       orElse: () => _availableCameras.first,
@@ -1854,9 +1941,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       debugPrint('Camera switch failed: $e');
       debugPrint('$st');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error switching camera: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error switching camera: $e')));
       }
     } finally {
       if (mounted) setState(() => _isSwitchingCamera = false);
@@ -1878,17 +1965,20 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     if (_fpsCounter.tick() && mounted) {
       setState(() => _fps = _fpsCounter.fps);
       final n = _recentInferenceUs.length;
-      final meanUs =
-          n == 0 ? 0.0 : _recentInferenceUs.reduce((a, b) => a + b) / n;
+      final meanUs = n == 0
+          ? 0.0
+          : _recentInferenceUs.reduce((a, b) => a + b) / n;
       final backend = _useCompiledModel ? 'compiledmodel' : 'xnnpack';
       final lastMs = _inferenceStats.latestUs == null
           ? '-'
           : (_inferenceStats.latestUs! / 1000).toStringAsFixed(3);
       // ignore: avoid_print
-      print('[live-bench] backend=$backend '
-          'cameraFps=$_fps detPerSec=$_detThisSec '
-          'meanInferMs=${(meanUs / 1000).toStringAsFixed(3)} '
-          'lastMs=$lastMs hands=${_hands.length}');
+      print(
+        '[live-bench] backend=$backend '
+        'cameraFps=$_fps detPerSec=$_detThisSec '
+        'meanInferMs=${(meanUs / 1000).toStringAsFixed(3)} '
+        'lastMs=$lastMs hands=${_hands.length}',
+      );
       _recentInferenceUs.clear();
       _detThisSec = 0;
     }
@@ -1926,8 +2016,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
         stopwatch.stop();
         final detectionTimeUs = stopwatch.elapsedMicroseconds;
-        final shouldRecordTiming =
-            _inferenceStats.record(statsGeneration, detectionTimeUs);
+        final shouldRecordTiming = _inferenceStats.record(
+          statsGeneration,
+          detectionTimeUs,
+        );
         if (shouldRecordTiming) {
           _recentInferenceUs.add(detectionTimeUs);
           _detThisSec++;
@@ -1960,12 +2052,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   Widget build(BuildContext context) {
     if (!_isInitialized || _cameraController == null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Live Hand Detection'),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        appBar: AppBar(title: const Text('Live Hand Detection')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -1973,10 +2061,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     final effectiveOrientation = _effectiveDeviceOrientation(context);
     final bool isPortrait =
         effectiveOrientation == DeviceOrientation.portraitUp ||
-            effectiveOrientation == DeviceOrientation.portraitDown;
+        effectiveOrientation == DeviceOrientation.portraitDown;
 
-    final double displayAspectRatio =
-        isPortrait ? 1.0 / cameraAspectRatio : cameraAspectRatio;
+    final double displayAspectRatio = isPortrait
+        ? 1.0 / cameraAspectRatio
+        : cameraAspectRatio;
 
     final int turns = barQuarterTurns(_deviceOrientation);
     final bool mirrorOverlayHorizontally =
@@ -2262,14 +2351,15 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
       cap.release();
       String hint = '';
       if (Platform.isLinux) {
-        hint = '\n\nLinux requires GStreamer plugins. Try:\n'
+        hint =
+            '\n\nLinux requires GStreamer plugins. Try:\n'
             '  sudo apt install gstreamer1.0-libav '
             'gstreamer1.0-plugins-good gstreamer1.0-plugins-bad';
       }
       setState(
         () => _errorMessage =
             'Could not open video.\nFormat may not be supported by the OS '
-                'video backend.$hint',
+            'video backend.$hint',
       );
       return;
     }
@@ -2292,7 +2382,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
       setState(
         () => _errorMessage =
             'Could not open writer for $outPath. The "avc1" (H.264) codec '
-                'may not be available on this OS backend.',
+            'may not be available on this OS backend.',
       );
       return;
     }
@@ -2376,10 +2466,10 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
 
   /// Converts a Flutter [Color] to an OpenCV BGR scalar (alpha ignored).
   cv.Scalar _bgr(Color c) => cv.Scalar(
-        (c.b * 255).roundToDouble(),
-        (c.g * 255).roundToDouble(),
-        (c.r * 255).roundToDouble(),
-      );
+    (c.b * 255).roundToDouble(),
+    (c.g * 255).roundToDouble(),
+    (c.r * 255).roundToDouble(),
+  );
 
   /// Draws the enabled overlays onto [mat] with OpenCV, mirroring what
   /// [HandDetectionsPainter] draws on screen for the Still Image mode.
@@ -2512,22 +2602,29 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
 
             Widget cb(String label, bool v, void Function(bool) set) =>
                 CompactCheckbox(
-                    label: label,
-                    value: v,
-                    onChanged: (x) => updateState(() => set(x ?? false)));
+                  label: label,
+                  value: v,
+                  onChanged: (x) => updateState(() => set(x ?? false)),
+                );
             Widget col(String label, Color c, void Function(Color) set) =>
                 _ColorPickerButton(
-                    label: label,
-                    color: c,
-                    onColorChanged: (x) => updateState(() => set(x)));
-            Widget sl(String label, double v, double mn, double mx,
-                    void Function(double) set) =>
-                CompactSlider(
-                    label: label,
-                    value: v,
-                    min: mn,
-                    max: mx,
-                    onChanged: (x) => updateState(() => set(x)));
+                  label: label,
+                  color: c,
+                  onColorChanged: (x) => updateState(() => set(x)),
+                );
+            Widget sl(
+              String label,
+              double v,
+              double mn,
+              double mx,
+              void Function(double) set,
+            ) => CompactSlider(
+              label: label,
+              value: v,
+              min: mn,
+              max: mx,
+              onChanged: (x) => updateState(() => set(x)),
+            );
 
             return Container(
               decoration: const BoxDecoration(
@@ -2559,39 +2656,59 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                           ),
                         ),
                         ExpansionTile(
-                          title: const Text('Display Options',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Display Options',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           initiallyExpanded: true,
                           children: [
                             Wrap(
                               spacing: 8,
                               runSpacing: 4,
                               children: [
-                                cb('Bounding Boxes', _showBoundingBoxes,
-                                    (v) => _showBoundingBoxes = v),
-                                cb('Skeleton', _showSkeleton,
-                                    (v) => _showSkeleton = v),
-                                cb('Landmarks', _showLandmarks,
-                                    (v) => _showLandmarks = v),
-                                cb('Handedness', _showHandedness,
-                                    (v) => _showHandedness = v),
-                                cb('Gesture Labels', _showGestureLabels,
-                                    (v) => _showGestureLabels = v),
+                                cb(
+                                  'Bounding Boxes',
+                                  _showBoundingBoxes,
+                                  (v) => _showBoundingBoxes = v,
+                                ),
+                                cb(
+                                  'Skeleton',
+                                  _showSkeleton,
+                                  (v) => _showSkeleton = v,
+                                ),
+                                cb(
+                                  'Landmarks',
+                                  _showLandmarks,
+                                  (v) => _showLandmarks = v,
+                                ),
+                                cb(
+                                  'Handedness',
+                                  _showHandedness,
+                                  (v) => _showHandedness = v,
+                                ),
+                                cb(
+                                  'Gesture Labels',
+                                  _showGestureLabels,
+                                  (v) => _showGestureLabels = v,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Detection',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Detection',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
                             SwitchListTile(
                               dense: true,
                               contentPadding: EdgeInsets.zero,
                               title: const Text('Gesture recognition'),
                               subtitle: const Text(
-                                  'Recompute on the next processing run'),
+                                'Recompute on the next processing run',
+                              ),
                               value: _enableGestures,
                               onChanged: _isProcessing
                                   ? null
@@ -2604,34 +2721,62 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Colors',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Colors',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
                             Wrap(
                               spacing: 6,
                               runSpacing: 6,
                               children: [
-                                col('BBox', _boundingBoxColor,
-                                    (c) => _boundingBoxColor = c),
-                                col('Landmarks', _landmarkColor,
-                                    (c) => _landmarkColor = c),
-                                col('Skeleton', _skeletonColor,
-                                    (c) => _skeletonColor = c),
+                                col(
+                                  'BBox',
+                                  _boundingBoxColor,
+                                  (c) => _boundingBoxColor = c,
+                                ),
+                                col(
+                                  'Landmarks',
+                                  _landmarkColor,
+                                  (c) => _landmarkColor = c,
+                                ),
+                                col(
+                                  'Skeleton',
+                                  _skeletonColor,
+                                  (c) => _skeletonColor = c,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Sizes',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Sizes',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
-                            sl('BBox', _boundingBoxThickness, 0.5, 10.0,
-                                (v) => _boundingBoxThickness = v),
-                            sl('Landmark', _landmarkSize, 0.5, 15.0,
-                                (v) => _landmarkSize = v),
-                            sl('Skeleton', _skeletonThickness, 0.5, 10.0,
-                                (v) => _skeletonThickness = v),
+                            sl(
+                              'BBox',
+                              _boundingBoxThickness,
+                              0.5,
+                              10.0,
+                              (v) => _boundingBoxThickness = v,
+                            ),
+                            sl(
+                              'Landmark',
+                              _landmarkSize,
+                              0.5,
+                              15.0,
+                              (v) => _landmarkSize = v,
+                            ),
+                            sl(
+                              'Skeleton',
+                              _skeletonThickness,
+                              0.5,
+                              10.0,
+                              (v) => _skeletonThickness = v,
+                            ),
                             const SizedBox(height: 8),
                           ],
                         ),
@@ -2654,8 +2799,9 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
         title: const Text('Video File - Hand Detection'),
         actions: [
           TextButton(
-            onPressed:
-                _isInitialized && !_isProcessing ? _toggleAccelerator : null,
+            onPressed: _isInitialized && !_isProcessing
+                ? _toggleAccelerator
+                : null,
             child: Text(
               // See the live-camera badge: this names the engine, not a
               // delegate, because the interpreter path is Metal on iOS.
@@ -2683,13 +2829,13 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
               label: const Text('Pick Video'),
             )
           : (_isProcessing
-              ? FloatingActionButton.extended(
-                  onPressed: () => setState(() => _cancelRequested = true),
-                  icon: const Icon(Icons.cancel),
-                  label: const Text('Cancel'),
-                  backgroundColor: Colors.red,
-                )
-              : null),
+                ? FloatingActionButton.extended(
+                    onPressed: () => setState(() => _cancelRequested = true),
+                    icon: const Icon(Icons.cancel),
+                    label: const Text('Cancel'),
+                    backgroundColor: Colors.red,
+                  )
+                : null),
     );
   }
 
@@ -2806,13 +2952,14 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
           ] else if (_outputPath != null && _statusMessage != null)
             VideoResultCard(
               statusMessage: _statusMessage!,
-              summary: 'Total time: ${_formatDuration(_elapsed)} '
+              summary:
+                  'Total time: ${_formatDuration(_elapsed)} '
                   '(${processedFps.toStringAsFixed(1)} fps avg)',
               preview: _buildOutputPreview(),
               onOpenOutput:
                   (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
-                      ? _openOutputFile
-                      : null,
+                  ? _openOutputFile
+                  : null,
             )
           else
             Center(
@@ -2977,8 +3124,10 @@ class VideoPlayerChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double maxPreviewHeight =
-        math.max(120.0, MediaQuery.sizeOf(context).height * 0.45);
+    final double maxPreviewHeight = math.max(
+      120.0,
+      MediaQuery.sizeOf(context).height * 0.45,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3180,13 +3329,15 @@ class HandSmoother {
         ];
         track.filters[i] = fs;
       }
-      smoothed.add(HandLandmark(
-        type: lm.type,
-        x: fs[0].filter(lm.x, tSec),
-        y: fs[1].filter(lm.y, tSec),
-        z: lm.z,
-        visibility: lm.visibility,
-      ));
+      smoothed.add(
+        HandLandmark(
+          type: lm.type,
+          x: fs[0].filter(lm.x, tSec),
+          y: fs[1].filter(lm.y, tSec),
+          z: lm.z,
+          visibility: lm.visibility,
+        ),
+      );
     }
     return Hand(
       boundingBox: hand.boundingBox,

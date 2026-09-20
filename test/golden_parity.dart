@@ -20,12 +20,13 @@ void main() {
       detectorConf: 0.5,
       useCompiledModel: false,
     );
-    final results =
-        await detector.detect(load('$root/example/assets/samples/2-hands.png'));
-    final out = Platform.environment['GOLDEN_OUT'] ?? '/tmp/golden_hand.json';
-    File(out).writeAsStringSync(
-      jsonEncode(results.map((h) => h.toMap()).toList()),
+    final results = await detector.detect(
+      load('$root/example/assets/samples/2-hands.png'),
     );
+    final out = Platform.environment['GOLDEN_OUT'] ?? '/tmp/golden_hand.json';
+    File(
+      out,
+    ).writeAsStringSync(jsonEncode(results.map((h) => h.toMap()).toList()));
     stderr.writeln('[golden] hand: ${results.length} detections -> $out');
     await detector.dispose();
   });

@@ -53,8 +53,10 @@ class HandLandmarkModelWeb {
     final bytes = raw.buffer.asUint8List();
 
     final String resolved = await resolveWebAccelerator(liteRtAccelerator);
-    _liteRtItp =
-        await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved);
+    _liteRtItp = await LiteRtInterpreter.fromBytes(
+      bytes,
+      accelerator: resolved,
+    );
     _activeAccelerator = _liteRtItp!.activeAccelerator;
     logCompileFallback(
       model: 'HandLandmark',
@@ -120,12 +122,14 @@ class HandLandmarkModelWeb {
   /// with side [size] and rotation [theta] (radians). Landmarks come back in
   /// the model's input pixel space; the caller inverts the crop transform.
   Future<
-      ({
-        Float32List landmarks,
-        Float32List world,
-        double score,
-        double handedness
-      })> runOnCrop(
+    ({
+      Float32List landmarks,
+      Float32List world,
+      double score,
+      double handedness,
+    })
+  >
+  runOnCrop(
     JSObject canvasSource, {
     required double cx,
     required double cy,

@@ -402,16 +402,14 @@ class HandDetector {
   Future<List<Hand>> detect(Uint8List imageBytes) async {
     if (!isReady) {
       throw StateError(
-          'HandDetector not initialized. Call initialize() first.');
+        'HandDetector not initialized. Call initialize() first.',
+      );
     }
     final List<dynamic> result;
     try {
-      result = await _worker!.sendRequest<List<dynamic>>(
-        'detect',
-        {
-          'bytes': TransferableTypedData.fromList([imageBytes]),
-        },
-      );
+      result = await _worker!.sendRequest<List<dynamic>>('detect', {
+        'bytes': TransferableTypedData.fromList([imageBytes]),
+      });
     } catch (e) {
       rethrowOrFormatException(e, imageBytes);
     }
@@ -428,8 +426,10 @@ class HandDetector {
   Future<void> resetTracking() async {
     final worker = _worker;
     if (worker == null) return;
-    await worker
-        .sendRequest<Object?>('resetTracking', const <String, dynamic>{});
+    await worker.sendRequest<Object?>(
+      'resetTracking',
+      const <String, dynamic>{},
+    );
   }
 
   /// Detects hands in an image file at [path].
@@ -454,7 +454,8 @@ class HandDetector {
   Future<List<Hand>> detectFromMat(cv.Mat image) {
     if (!isReady) {
       throw StateError(
-          'HandDetector not initialized. Call initialize() first.');
+        'HandDetector not initialized. Call initialize() first.',
+      );
     }
     // A non-continuous Mat (e.g. a region()/ROI view) yields scrambled bytes
     // from .data, which reads total*elemSize contiguous bytes and ignores row
@@ -495,7 +496,8 @@ class HandDetector {
   }) async {
     if (!isReady) {
       throw StateError(
-          'HandDetector not initialized. Call initialize() first.');
+        'HandDetector not initialized. Call initialize() first.',
+      );
     }
     final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
       'detectMat',
@@ -524,7 +526,8 @@ class HandDetector {
   }) async {
     if (!isReady) {
       throw StateError(
-          'HandDetector not initialized. Call initialize() first.');
+        'HandDetector not initialized. Call initialize() first.',
+      );
     }
     final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
       'detectCameraFrame',
@@ -557,7 +560,8 @@ class HandDetector {
   }) async {
     if (!isReady) {
       throw StateError(
-          'HandDetector not initialized. Call initialize() first.');
+        'HandDetector not initialized. Call initialize() first.',
+      );
     }
     final frame = prepareCameraFrameFromImage(
       cameraImage,
@@ -578,7 +582,8 @@ class HandDetector {
   ///
   /// Deprecated: Use [detectFromMatBytes] instead.
   @Deprecated(
-      'Use detectFromMatBytes instead. Will be removed in a future release.')
+    'Use detectFromMatBytes instead. Will be removed in a future release.',
+  )
   Future<List<Hand>> detectOnMatBytes(
     Uint8List bytes, {
     required int width,
@@ -622,19 +627,19 @@ class HandDetector {
         embedderBytes = data.gestureEmbedderBytes!.materialize().asUint8List();
       }
       if (data.gestureClassifierBytes != null) {
-        classifierBytes =
-            data.gestureClassifierBytes!.materialize().asUint8List();
+        classifierBytes = data.gestureClassifierBytes!
+            .materialize()
+            .asUint8List();
       }
 
-      final mode = HandMode.values.firstWhere(
-        (m) => m.name == data.modeName,
-      );
+      final mode = HandMode.values.firstWhere((m) => m.name == data.modeName);
       final performanceMode = PerformanceMode.values.firstWhere(
         (m) => m.name == data.performanceModeName,
       );
 
-      final accelerators =
-          data.acceleratorIndices.map((i) => Accelerator.values[i]).toSet();
+      final accelerators = data.acceleratorIndices
+          .map((i) => Accelerator.values[i])
+          .toSet();
       final precision = Precision.values[data.precisionIndex];
 
       core = HandDetectorCore();
@@ -691,8 +696,8 @@ class HandDetector {
       receivePort: workerReceivePort,
       handlers: {
         'detect': (message) {
-          final ByteBuffer bb =
-              (message['bytes'] as TransferableTypedData).materialize();
+          final ByteBuffer bb = (message['bytes'] as TransferableTypedData)
+              .materialize();
           final mat = cv.imdecode(bb.asUint8List(), cv.IMREAD_COLOR);
           if (mat.isEmpty) {
             mat.dispose();
@@ -701,15 +706,17 @@ class HandDetector {
           return detectMat(mat);
         },
         'detectMat': (message) {
-          final ByteBuffer bb =
-              (message['bytes'] as TransferableTypedData).materialize();
+          final ByteBuffer bb = (message['bytes'] as TransferableTypedData)
+              .materialize();
           final matType = cv.MatType(message['matType'] as int);
-          return detectMat(ImageUtils.matFromPackedBytes(
-            message['height'] as int,
-            message['width'] as int,
-            matType,
-            bb.asUint8List(),
-          ));
+          return detectMat(
+            ImageUtils.matFromPackedBytes(
+              message['height'] as int,
+              message['width'] as int,
+              matType,
+              bb.asUint8List(),
+            ),
+          );
         },
         'detectCameraFrame': (message) {
           final Uint8List frameBytes =
@@ -772,12 +779,14 @@ class _HandDetectorWorker extends IsolateWorkerBase {
     TransferableTypedData? gestureEmbedderData;
     TransferableTypedData? gestureClassifierData;
     if (gestureEmbedderBytes != null) {
-      gestureEmbedderData =
-          TransferableTypedData.fromList([gestureEmbedderBytes]);
+      gestureEmbedderData = TransferableTypedData.fromList([
+        gestureEmbedderBytes,
+      ]);
     }
     if (gestureClassifierBytes != null) {
-      gestureClassifierData =
-          TransferableTypedData.fromList([gestureClassifierBytes]);
+      gestureClassifierData = TransferableTypedData.fromList([
+        gestureClassifierBytes,
+      ]);
     }
 
     await initWorker(
@@ -785,10 +794,12 @@ class _HandDetectorWorker extends IsolateWorkerBase {
         HandDetector._detectionIsolateEntry,
         _DetectionIsolateStartupData(
           sendPort: sendPort,
-          palmDetectionBytes:
-              TransferableTypedData.fromList([palmDetectionBytes]),
-          handLandmarkBytes:
-              TransferableTypedData.fromList([handLandmarkBytes]),
+          palmDetectionBytes: TransferableTypedData.fromList([
+            palmDetectionBytes,
+          ]),
+          handLandmarkBytes: TransferableTypedData.fromList([
+            handLandmarkBytes,
+          ]),
           gestureEmbedderBytes: gestureEmbedderData,
           gestureClassifierBytes: gestureClassifierData,
           modeName: mode.name,

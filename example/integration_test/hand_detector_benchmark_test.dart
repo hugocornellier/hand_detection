@@ -63,7 +63,7 @@ class BenchmarkStats {
     final m = mean;
     final variance =
         timings.map((x) => (x - m) * (x - m)).reduce((a, b) => a + b) /
-            timings.length;
+        timings.length;
     return variance > 0 ? variance : 0.0;
   }
 
@@ -79,17 +79,17 @@ class BenchmarkStats {
   }
 
   Map<String, dynamic> toJson() => {
-        'image_path': imagePath,
-        'image_size_kb': (imageSize / 1024),
-        'detection_count': detectionCount,
-        'iterations': timings.length,
-        'timings_ms': timings,
-        'mean_ms': mean,
-        'median_ms': median,
-        'min_ms': min,
-        'max_ms': max,
-        'stddev_ms': stdDev,
-      };
+    'image_path': imagePath,
+    'image_size_kb': (imageSize / 1024),
+    'detection_count': detectionCount,
+    'iterations': timings.length,
+    'timings_ms': timings,
+    'mean_ms': mean,
+    'median_ms': median,
+    'min_ms': min,
+    'max_ms': max,
+    'stddev_ms': stdDev,
+  };
 }
 
 /// Aggregated benchmark results
@@ -127,12 +127,12 @@ class BenchmarkResults {
   }
 
   Map<String, dynamic> toJson() => {
-        'timestamp': timestamp,
-        'test_name': testName,
-        'configuration': configuration,
-        'overall_mean_ms': overallMean,
-        'results': results.map((r) => r.toJson()).toList(),
-      };
+    'timestamp': timestamp,
+    'test_name': testName,
+    'configuration': configuration,
+    'overall_mean_ms': overallMean,
+    'results': results.map((r) => r.toJson()).toList(),
+  };
 
   void printJson(String filename) {
     print('\n📊 BENCHMARK_JSON_START:$filename');
@@ -145,130 +145,123 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('HandDetector - Performance Benchmarks', () {
-    test(
-      'Benchmark with cv.Mat input + XNNPACK',
-      () async {
-        print('\nUsing ${sampleImages.length} sample images:');
-        for (final img in sampleImages) {
-          print('  - $img');
-        }
+    test('Benchmark with cv.Mat input + XNNPACK', () async {
+      print('\nUsing ${sampleImages.length} sample images:');
+      for (final img in sampleImages) {
+        print('  - $img');
+      }
 
-        final detector = await HandDetector.create(
-          mode: HandMode.boxesAndLandmarks,
-          landmarkModel: HandLandmarkModel.full,
-          performanceConfig: const PerformanceConfig.xnnpack(),
-        );
+      final detector = await HandDetector.create(
+        mode: HandMode.boxesAndLandmarks,
+        landmarkModel: HandLandmarkModel.full,
+        performanceConfig: const PerformanceConfig.xnnpack(),
+      );
 
-        print('\n${'=' * 60}');
-        print('BENCHMARK: Hand Detection with cv.Mat + XNNPACK');
-        print('Iterations per image: $iterations');
-        print('=' * 60);
+      print('\n${'=' * 60}');
+      print('BENCHMARK: Hand Detection with cv.Mat + XNNPACK');
+      print('Iterations per image: $iterations');
+      print('=' * 60);
 
-        final allStats = <BenchmarkStats>[];
+      final allStats = <BenchmarkStats>[];
 
-        for (final imagePath in sampleImages) {
-          final ByteData data = await rootBundle.load(imagePath);
-          final Uint8List bytes = data.buffer.asUint8List();
-
-          final List<int> timings = [];
-          int detectionCount = 0;
-
-          // Run iterations - decode fresh Mat each time
-          for (int i = 0; i < iterations; i++) {
-            final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-
-            final stopwatch = Stopwatch()..start();
-            final results = await detector.detectFromMat(mat);
-            stopwatch.stop();
-
-            mat.dispose();
-
-            timings.add(stopwatch.elapsedMilliseconds);
-            if (i == 0) detectionCount = results.length;
-          }
-
-          final stats = BenchmarkStats(
-            imagePath: imagePath,
-            timings: timings,
-            imageSize: bytes.length,
-            detectionCount: detectionCount,
-          );
-          stats.printResults(imagePath);
-          allStats.add(stats);
-        }
-
-        await detector.dispose();
-
-        // Write results to file
-        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-        final benchmarkResults = BenchmarkResults(
-          timestamp: timestamp,
-          testName: 'Hand Detection with cv.Mat + XNNPACK',
-          configuration: {
-            'mode': 'boxesAndLandmarks',
-            'landmark_model': 'full',
-            'performance_config': 'xnnpack',
-            'api': 'detectFromMat',
-            'iterations': iterations,
-            'sample_images': sampleImages.length,
-          },
-          results: allStats,
-        );
-        benchmarkResults.printSummary();
-        benchmarkResults.printJson('benchmark_$timestamp.json');
-      },
-      timeout: const Timeout(Duration(minutes: 30)),
-    );
-
-    test(
-      'Benchmark: Live camera simulation (fresh Mat each frame)',
-      () async {
-        final detector = await HandDetector.create(
-          mode: HandMode.boxesAndLandmarks,
-          landmarkModel: HandLandmarkModel.full,
-          performanceConfig: const PerformanceConfig.xnnpack(),
-        );
-
-        print('\n${'=' * 60}');
-        print('BENCHMARK: Live Camera Simulation');
-        print('Fresh cv.Mat each frame (simulates camera frame processing)');
-        print('=' * 60);
-
-        // Use first image for sustained throughput test
-        final ByteData data = await rootBundle.load(sampleImages[0]);
+      for (final imagePath in sampleImages) {
+        final ByteData data = await rootBundle.load(imagePath);
         final Uint8List bytes = data.buffer.asUint8List();
 
-        // Warm-up with fresh Mats
-        for (int i = 0; i < 5; i++) {
-          final warmupMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-          await detector.detectFromMat(warmupMat);
-          warmupMat.dispose();
-        }
+        final List<int> timings = [];
+        int detectionCount = 0;
 
-        // Measure sustained throughput with fresh Mat each frame
-        const int frames = 100;
-        final stopwatch = Stopwatch()..start();
-        for (int i = 0; i < frames; i++) {
-          final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-          await detector.detectFromMat(mat);
+        // Run iterations - decode fresh Mat each time
+        for (int i = 0; i < iterations; i++) {
+          final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+
+          final stopwatch = Stopwatch()..start();
+          final results = await detector.detectFromMat(mat);
+          stopwatch.stop();
+
           mat.dispose();
+
+          timings.add(stopwatch.elapsedMilliseconds);
+          if (i == 0) detectionCount = results.length;
         }
-        stopwatch.stop();
 
-        final totalMs = stopwatch.elapsedMilliseconds;
-        final avgMs = totalMs / frames;
-        final fps = 1000 / avgMs;
+        final stats = BenchmarkStats(
+          imagePath: imagePath,
+          timings: timings,
+          imageSize: bytes.length,
+          detectionCount: detectionCount,
+        );
+        stats.printResults(imagePath);
+        allStats.add(stats);
+      }
 
-        print('\nSustained throughput test ($frames frames):');
-        print('  Total time:    $totalMs ms');
-        print(
-            '  Avg per frame: ${avgMs.toStringAsFixed(1)} ms (includes decode)');
-        print('  Throughput:    ${fps.toStringAsFixed(1)} FPS');
-        print('=' * 60);
+      await detector.dispose();
 
-        await detector.dispose();
-      },
-      timeout: const Timeout(Duration(minutes: 10)),
-    );
+      // Write results to file
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final benchmarkResults = BenchmarkResults(
+        timestamp: timestamp,
+        testName: 'Hand Detection with cv.Mat + XNNPACK',
+        configuration: {
+          'mode': 'boxesAndLandmarks',
+          'landmark_model': 'full',
+          'performance_config': 'xnnpack',
+          'api': 'detectFromMat',
+          'iterations': iterations,
+          'sample_images': sampleImages.length,
+        },
+        results: allStats,
+      );
+      benchmarkResults.printSummary();
+      benchmarkResults.printJson('benchmark_$timestamp.json');
+    }, timeout: const Timeout(Duration(minutes: 30)));
+
+    test('Benchmark: Live camera simulation (fresh Mat each frame)', () async {
+      final detector = await HandDetector.create(
+        mode: HandMode.boxesAndLandmarks,
+        landmarkModel: HandLandmarkModel.full,
+        performanceConfig: const PerformanceConfig.xnnpack(),
+      );
+
+      print('\n${'=' * 60}');
+      print('BENCHMARK: Live Camera Simulation');
+      print('Fresh cv.Mat each frame (simulates camera frame processing)');
+      print('=' * 60);
+
+      // Use first image for sustained throughput test
+      final ByteData data = await rootBundle.load(sampleImages[0]);
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      // Warm-up with fresh Mats
+      for (int i = 0; i < 5; i++) {
+        final warmupMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+        await detector.detectFromMat(warmupMat);
+        warmupMat.dispose();
+      }
+
+      // Measure sustained throughput with fresh Mat each frame
+      const int frames = 100;
+      final stopwatch = Stopwatch()..start();
+      for (int i = 0; i < frames; i++) {
+        final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+        await detector.detectFromMat(mat);
+        mat.dispose();
+      }
+      stopwatch.stop();
+
+      final totalMs = stopwatch.elapsedMilliseconds;
+      final avgMs = totalMs / frames;
+      final fps = 1000 / avgMs;
+
+      print('\nSustained throughput test ($frames frames):');
+      print('  Total time:    $totalMs ms');
+      print(
+        '  Avg per frame: ${avgMs.toStringAsFixed(1)} ms (includes decode)',
+      );
+      print('  Throughput:    ${fps.toStringAsFixed(1)} FPS');
+      print('=' * 60);
+
+      await detector.dispose();
+    }, timeout: const Timeout(Duration(minutes: 10)));
   });
 }

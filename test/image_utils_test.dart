@@ -12,8 +12,11 @@ void main() {
   group('keepAspectResizeAndPad', () {
     test('portrait image padded to square', () {
       final source = cv.Mat.zeros(200, 100, cv.MatType.CV_8UC3);
-      final (padded, resized) =
-          ImageUtils.keepAspectResizeAndPad(source, 192, 192);
+      final (padded, resized) = ImageUtils.keepAspectResizeAndPad(
+        source,
+        192,
+        192,
+      );
 
       try {
         expect(padded.cols, 192);
@@ -30,8 +33,11 @@ void main() {
 
     test('landscape image padded to square', () {
       final source = cv.Mat.zeros(100, 200, cv.MatType.CV_8UC3);
-      final (padded, resized) =
-          ImageUtils.keepAspectResizeAndPad(source, 192, 192);
+      final (padded, resized) = ImageUtils.keepAspectResizeAndPad(
+        source,
+        192,
+        192,
+      );
 
       try {
         expect(padded.cols, 192);
@@ -48,8 +54,11 @@ void main() {
 
     test('square image requires no padding', () {
       final source = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
-      final (padded, resized) =
-          ImageUtils.keepAspectResizeAndPad(source, 192, 192);
+      final (padded, resized) = ImageUtils.keepAspectResizeAndPad(
+        source,
+        192,
+        192,
+      );
 
       try {
         expect(padded.cols, 192);
@@ -65,8 +74,11 @@ void main() {
 
     test('non-square target dimensions', () {
       final source = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
-      final (padded, resized) =
-          ImageUtils.keepAspectResizeAndPad(source, 224, 192);
+      final (padded, resized) = ImageUtils.keepAspectResizeAndPad(
+        source,
+        224,
+        192,
+      );
 
       try {
         expect(padded.cols, 224);
@@ -573,10 +585,7 @@ void main() {
         1,
         (_) => List.generate(
           2,
-          (_) => List.generate(
-            2,
-            (_) => List<double>.filled(3, -1.0),
-          ),
+          (_) => List.generate(2, (_) => List<double>.filled(3, -1.0)),
         ),
       );
 

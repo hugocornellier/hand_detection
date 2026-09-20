@@ -133,22 +133,16 @@ class GestureResult {
   final double confidence;
 
   /// Creates a gesture result with the given type and confidence.
-  const GestureResult({
-    required this.type,
-    required this.confidence,
-  });
+  const GestureResult({required this.type, required this.confidence});
 
   /// Serializes this gesture result to a map for cross-isolate transfer.
-  Map<String, dynamic> toMap() => {
-        'type': type.name,
-        'confidence': confidence,
-      };
+  Map<String, dynamic> toMap() => {'type': type.name, 'confidence': confidence};
 
   /// Deserializes a gesture result from a map.
   static GestureResult fromMap(Map<String, dynamic> map) => GestureResult(
-        type: GestureType.values.firstWhere((e) => e.name == map['type']),
-        confidence: (map['confidence'] as num).toDouble(),
-      );
+    type: GestureType.values.firstWhere((e) => e.name == map['type']),
+    confidence: (map['confidence'] as num).toDouble(),
+  );
 
   @override
   String toString() =>
@@ -213,21 +207,21 @@ class HandLandmark with LandmarkMixin {
 
   /// Serializes this landmark to a map for cross-isolate transfer.
   Map<String, dynamic> toMap() => {
-        'type': type.name,
-        'x': x,
-        'y': y,
-        'z': z,
-        'visibility': visibility,
-      };
+    'type': type.name,
+    'x': x,
+    'y': y,
+    'z': z,
+    'visibility': visibility,
+  };
 
   /// Deserializes a landmark from a map.
   static HandLandmark fromMap(Map<String, dynamic> map) => HandLandmark(
-        type: HandLandmarkType.values.firstWhere((e) => e.name == map['type']),
-        x: (map['x'] as num).toDouble(),
-        y: (map['y'] as num).toDouble(),
-        z: (map['z'] as num).toDouble(),
-        visibility: (map['visibility'] as num).toDouble(),
-      );
+    type: HandLandmarkType.values.firstWhere((e) => e.name == map['type']),
+    x: (map['x'] as num).toDouble(),
+    y: (map['y'] as num).toDouble(),
+    z: (map['z'] as num).toDouble(),
+    visibility: (map['visibility'] as num).toDouble(),
+  );
 }
 
 /// Handedness type indicating left or right hand.
@@ -459,40 +453,41 @@ class Hand {
 
   /// Serializes this hand to a map for cross-isolate transfer.
   Map<String, dynamic> toMap() => {
-        'boundingBox': boundingBox.toMap(),
-        'score': score,
-        'landmarks': landmarks.map((l) => l.toMap()).toList(),
-        'imageWidth': imageWidth,
-        'imageHeight': imageHeight,
-        'handedness': handedness?.name,
-        'rotation': rotation,
-        'rotatedCenterX': rotatedCenterX,
-        'rotatedCenterY': rotatedCenterY,
-        'rotatedSize': rotatedSize,
-        'gesture': gesture?.toMap(),
-      };
+    'boundingBox': boundingBox.toMap(),
+    'score': score,
+    'landmarks': landmarks.map((l) => l.toMap()).toList(),
+    'imageWidth': imageWidth,
+    'imageHeight': imageHeight,
+    'handedness': handedness?.name,
+    'rotation': rotation,
+    'rotatedCenterX': rotatedCenterX,
+    'rotatedCenterY': rotatedCenterY,
+    'rotatedSize': rotatedSize,
+    'gesture': gesture?.toMap(),
+  };
 
   /// Deserializes a hand from a map.
   static Hand fromMap(Map<String, dynamic> map) => Hand(
-        boundingBox:
-            BoundingBox.fromMap(map['boundingBox'] as Map<String, dynamic>),
-        score: (map['score'] as num).toDouble(),
-        landmarks: (map['landmarks'] as List<dynamic>)
-            .map((l) => HandLandmark.fromMap(l as Map<String, dynamic>))
-            .toList(),
-        imageWidth: map['imageWidth'] as int,
-        imageHeight: map['imageHeight'] as int,
-        handedness: map['handedness'] != null
-            ? Handedness.values.firstWhere((e) => e.name == map['handedness'])
-            : null,
-        rotation: (map['rotation'] as num?)?.toDouble(),
-        rotatedCenterX: (map['rotatedCenterX'] as num?)?.toDouble(),
-        rotatedCenterY: (map['rotatedCenterY'] as num?)?.toDouble(),
-        rotatedSize: (map['rotatedSize'] as num?)?.toDouble(),
-        gesture: map['gesture'] != null
-            ? GestureResult.fromMap(map['gesture'] as Map<String, dynamic>)
-            : null,
-      );
+    boundingBox: BoundingBox.fromMap(
+      map['boundingBox'] as Map<String, dynamic>,
+    ),
+    score: (map['score'] as num).toDouble(),
+    landmarks: (map['landmarks'] as List<dynamic>)
+        .map((l) => HandLandmark.fromMap(l as Map<String, dynamic>))
+        .toList(),
+    imageWidth: map['imageWidth'] as int,
+    imageHeight: map['imageHeight'] as int,
+    handedness: map['handedness'] != null
+        ? Handedness.values.firstWhere((e) => e.name == map['handedness'])
+        : null,
+    rotation: (map['rotation'] as num?)?.toDouble(),
+    rotatedCenterX: (map['rotatedCenterX'] as num?)?.toDouble(),
+    rotatedCenterY: (map['rotatedCenterY'] as num?)?.toDouble(),
+    rotatedSize: (map['rotatedSize'] as num?)?.toDouble(),
+    gesture: map['gesture'] != null
+        ? GestureResult.fromMap(map['gesture'] as Map<String, dynamic>)
+        : null,
+  );
 
   /// Gets a specific landmark by type, or null if not found
   HandLandmark? getLandmark(HandLandmarkType type) {
@@ -511,8 +506,10 @@ class Hand {
   @override
   String toString() {
     final String landmarksInfo = landmarks
-        .map((l) =>
-            '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}')
+        .map(
+          (l) =>
+              '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}',
+        )
         .join('\n');
     final String gestureInfo = gesture != null
         ? '  gesture=${gesture!.type.name} (${gesture!.confidence.toStringAsFixed(3)}),\n'

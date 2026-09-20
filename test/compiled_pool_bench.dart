@@ -22,7 +22,9 @@ void main() {
     cv.Mat img;
     try {
       img = cv.imdecode(
-          load('$root/example/assets/samples/2-hands.png'), cv.IMREAD_COLOR);
+        load('$root/example/assets/samples/2-hands.png'),
+        cv.IMREAD_COLOR,
+      );
     } catch (_) {
       markTestSkipped('sample image missing');
       return;
@@ -66,11 +68,13 @@ void main() {
     double ms(int u) => u / 1000.0;
     final mean = us.reduce((a, b) => a + b) / n;
     // ignore: avoid_print
-    print('[pool-bench] pool=$pool hands=$hands n=$n '
-        'mean=${ms(mean.round()).toStringAsFixed(2)}ms '
-        'median=${ms(us[n ~/ 2]).toStringAsFixed(2)}ms '
-        'p10=${ms(us[n ~/ 10]).toStringAsFixed(2)}ms '
-        'p90=${ms(us[(n * 9) ~/ 10]).toStringAsFixed(2)}ms');
+    print(
+      '[pool-bench] pool=$pool hands=$hands n=$n '
+      'mean=${ms(mean.round()).toStringAsFixed(2)}ms '
+      'median=${ms(us[n ~/ 2]).toStringAsFixed(2)}ms '
+      'p10=${ms(us[n ~/ 10]).toStringAsFixed(2)}ms '
+      'p90=${ms(us[(n * 9) ~/ 10]).toStringAsFixed(2)}ms',
+    );
 
     await core.dispose();
     img.dispose();

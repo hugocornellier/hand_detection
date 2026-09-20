@@ -14,14 +14,8 @@ void main() {
     test('modelVersionFor changes with detector configuration', () {
       final base = HandDetector.modelVersionFor();
 
-      expect(
-        HandDetector.modelVersionFor(mode: HandMode.boxes),
-        isNot(base),
-      );
-      expect(
-        HandDetector.modelVersionFor(enableGestures: true),
-        isNot(base),
-      );
+      expect(HandDetector.modelVersionFor(mode: HandMode.boxes), isNot(base));
+      expect(HandDetector.modelVersionFor(enableGestures: true), isNot(base));
     });
   });
 
@@ -143,8 +137,10 @@ void main() {
 
   group('GestureResult', () {
     test('toMap/fromMap round-trip', () {
-      const original =
-          GestureResult(type: GestureType.thumbUp, confidence: 0.95);
+      const original = GestureResult(
+        type: GestureType.thumbUp,
+        confidence: 0.95,
+      );
       final map = original.toMap();
       final restored = GestureResult.fromMap(map);
 
@@ -169,8 +165,10 @@ void main() {
     });
 
     test('toString formats correctly', () {
-      const gesture =
-          GestureResult(type: GestureType.openPalm, confidence: 0.875);
+      const gesture = GestureResult(
+        type: GestureType.openPalm,
+        confidence: 0.875,
+      );
       final str = gesture.toString();
 
       expect(str, contains('openPalm'));
@@ -594,8 +592,10 @@ void main() {
         rotatedCenterX: 105.0,
         rotatedCenterY: 250.0,
         rotatedSize: 190.0,
-        gesture:
-            const GestureResult(type: GestureType.thumbUp, confidence: 0.9),
+        gesture: const GestureResult(
+          type: GestureType.thumbUp,
+          confidence: 0.9,
+        ),
       );
     }
 
@@ -749,8 +749,7 @@ void main() {
       expect(str, contains('landmarks=2'));
     });
 
-    test('toString with rotation data present includes score and landmarks',
-        () {
+    test('toString with rotation data present includes score and landmarks', () {
       // createFullHand already has rotation, rotatedCenterX/Y, rotatedSize set.
       // Verify toString still produces well-formed output with those fields present.
       final hand = createFullHand();
@@ -798,17 +797,26 @@ void main() {
     test('all endpoints are valid HandLandmarkType values', () {
       final allTypes = HandLandmarkType.values.toSet();
       for (final connection in handLandmarkConnections) {
-        expect(allTypes.contains(connection[0]), true,
-            reason: 'Invalid start: ${connection[0]}');
-        expect(allTypes.contains(connection[1]), true,
-            reason: 'Invalid end: ${connection[1]}');
+        expect(
+          allTypes.contains(connection[0]),
+          true,
+          reason: 'Invalid start: ${connection[0]}',
+        );
+        expect(
+          allTypes.contains(connection[1]),
+          true,
+          reason: 'Invalid end: ${connection[1]}',
+        );
       }
     });
 
     test('wrist connects to thumb, index, and pinky', () {
       final wristConnections = handLandmarkConnections
-          .where((c) =>
-              c[0] == HandLandmarkType.wrist || c[1] == HandLandmarkType.wrist)
+          .where(
+            (c) =>
+                c[0] == HandLandmarkType.wrist ||
+                c[1] == HandLandmarkType.wrist,
+          )
           .toList();
       // Wrist connects to: thumbCMC, indexFingerMCP, pinkyMCP
       expect(wristConnections.length, 3);
@@ -832,8 +840,11 @@ void main() {
           }
         }
       }
-      expect(connected.length, 21,
-          reason: 'Not all landmarks are connected in the skeleton');
+      expect(
+        connected.length,
+        21,
+        reason: 'Not all landmarks are connected in the skeleton',
+      );
     });
   });
 

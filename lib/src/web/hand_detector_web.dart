@@ -91,10 +91,10 @@ class HandDetector with WebGpuFallback {
   /// [aggregateActiveAccelerator].
   @override
   String? get activeAccelerator => aggregateActiveAccelerator(<String?>[
-        _palm.activeAccelerator,
-        _landmark.activeAccelerator,
-        _gesture?.activeAccelerator,
-      ]);
+    _palm.activeAccelerator,
+    _landmark.activeAccelerator,
+    _gesture?.activeAccelerator,
+  ]);
 
   Future<void> initialize({
     HandMode mode = HandMode.boxesAndLandmarks,
@@ -270,8 +270,9 @@ class HandDetector with WebGpuFallback {
       );
       if (lm.score < _minLandmarkScore) continue;
 
-      final handedness =
-          lm.handedness > 0.5 ? Handedness.right : Handedness.left;
+      final handedness = lm.handedness > 0.5
+          ? Handedness.right
+          : Handedness.left;
       final landmarks = _transformLandmarks(
         lm.landmarks,
         cx: cx,
@@ -298,19 +299,21 @@ class HandDetector with WebGpuFallback {
       }
 
       final double half = size / 2;
-      results.add(Hand(
-        boundingBox: _clampedBox(cx, cy, half, imageWidth, imageHeight),
-        score: palm.score,
-        landmarks: landmarks,
-        imageWidth: imageWidth,
-        imageHeight: imageHeight,
-        handedness: handedness,
-        rotation: theta,
-        rotatedCenterX: cx,
-        rotatedCenterY: cy,
-        rotatedSize: size,
-        gesture: gesture,
-      ));
+      results.add(
+        Hand(
+          boundingBox: _clampedBox(cx, cy, half, imageWidth, imageHeight),
+          score: palm.score,
+          landmarks: landmarks,
+          imageWidth: imageWidth,
+          imageHeight: imageHeight,
+          handedness: handedness,
+          rotation: theta,
+          rotatedCenterX: cx,
+          rotatedCenterY: cy,
+          rotatedSize: size,
+          gesture: gesture,
+        ),
+      );
     }
     return results;
   }
@@ -358,13 +361,15 @@ class HandDetector with WebGpuFallback {
       final double mz = flat[i * 3 + 2];
       final double rx = ct * mx - st * my;
       final double ry = st * mx + ct * my;
-      out.add(HandLandmark(
-        type: HandLandmarkType.values[i],
-        x: (cx + rx * scale).clamp(0.0, imageWidth.toDouble()),
-        y: (cy + ry * scale).clamp(0.0, imageHeight.toDouble()),
-        z: mz,
-        visibility: score,
-      ));
+      out.add(
+        HandLandmark(
+          type: HandLandmarkType.values[i],
+          x: (cx + rx * scale).clamp(0.0, imageWidth.toDouble()),
+          y: (cy + ry * scale).clamp(0.0, imageHeight.toDouble()),
+          z: mz,
+          visibility: score,
+        ),
+      );
     }
     return out;
   }
@@ -373,13 +378,15 @@ class HandDetector with WebGpuFallback {
     final out = <HandLandmark>[];
     for (int i = 0; i < numHandLandmarks; i++) {
       final base = i * 3;
-      out.add(HandLandmark(
-        type: HandLandmarkType.values[i],
-        x: flat[base],
-        y: flat[base + 1],
-        z: flat[base + 2],
-        visibility: score,
-      ));
+      out.add(
+        HandLandmark(
+          type: HandLandmarkType.values[i],
+          x: flat[base],
+          y: flat[base + 1],
+          z: flat[base + 2],
+          visibility: score,
+        ),
+      );
     }
     return out;
   }
