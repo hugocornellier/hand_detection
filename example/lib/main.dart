@@ -2010,7 +2010,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         final List<Hand> hands = await _handDetector!.detectFromCameraImage(
           image,
           rotation: rotation,
-          isBgra: Platform.isMacOS,
           maxDim: maxDim,
         );
 
